@@ -1,0 +1,3092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cutlist Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --paper:#F3F0E8;
+    --panel:#FFFFFF;
+    --line:#DDD7C6;
+    --ink:#1C1A15;
+    --ink-soft:#6B6555;
+    --ink-faint:#948D7A;
+    --ink-ghost:#C3BCAB;
+    --blue:#1F4B5F;
+    --blue-deep:#12333F;
+    --rust:#B8451F;
+    --rust-soft:#E8C9BB;
+    --waste-bg:#EAE5D6;
+    --waste-line:#C7C0AA;
+    --green:#3E6350;
+    --warn:#9C2B18;
+    --warn-bg:#F5E2DC;
+    --focus:#1F4B5F;
+    --radius:10px;
+    --font-display:'Space Grotesk', sans-serif;
+    --font-body:'IBM Plex Sans', sans-serif;
+    --font-mono:'IBM Plex Mono', monospace;
+  }
+
+  *{box-sizing:border-box;}
+  [hidden]{ display:none !important; }
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--font-body);
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  ::selection{ background:var(--blue); color:#fff; }
+
+  :focus-visible{
+    outline:2px solid var(--focus);
+    outline-offset:2px;
+  }
+
+  .app{
+    max-width:1180px;
+    margin:0 auto;
+    padding:28px 20px 64px;
+  }
+
+  .app-header{
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px;
+    margin-bottom:22px;
+    position:relative;
+  }
+  .help-btn{
+    position:absolute;
+    top:0;
+    right:0;
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.02em;
+    color:var(--blue);
+    background:none;
+    border:1px solid var(--blue);
+    border-radius:8px;
+    padding:7px 12px;
+    cursor:pointer;
+  }
+  .help-btn:hover{ background:var(--blue); color:#fff; }
+
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(28,26,21,0.45);
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:40px 20px;
+    z-index:100;
+    overflow-y:auto;
+  }
+  .modal{
+    position:relative;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    max-width:640px;
+    width:100%;
+    padding:28px 30px 30px;
+    box-shadow:0 20px 60px rgba(18,51,63,0.35);
+  }
+  .modal-close{
+    position:absolute;
+    top:14px; right:16px;
+    width:30px; height:30px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#fff;
+    color:var(--ink-soft);
+    font-size:18px;
+    line-height:1;
+    cursor:pointer;
+  }
+  .modal-close:hover{ background:var(--warn-bg); color:var(--warn); }
+  .modal h2{ font-family:var(--font-display); font-size:22px; margin:0 0 8px; }
+  .modal h3{ font-family:var(--font-mono); font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--blue); margin:20px 0 6px; }
+  .modal p, .modal li{ font-size:14px; color:var(--ink); line-height:1.55; }
+  .modal .modal-lead{ color:var(--ink-soft); }
+  .modal ul{ margin:6px 0 0; padding-left:20px; }
+  .modal li{ margin-bottom:4px; }
+  .modal code{ font-family:var(--font-mono); font-size:12px; background:var(--paper); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  .modal .modal-foot{ margin-top:20px; padding-top:14px; border-top:1px solid var(--line); font-size:13px; color:var(--ink-soft); }
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--blue);
+    margin-bottom:8px;
+  }
+  h1{
+    font-family:var(--font-display);
+    font-size:28px;
+    font-weight:600;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  .sub{
+    margin:0;
+    color:var(--ink-soft);
+    font-size:14px;
+    max-width:640px;
+  }
+
+  .layout{
+    display:grid;
+    grid-template-columns:340px 1fr;
+    gap:20px;
+    align-items:start;
+  }
+  @media (max-width:860px){
+    .layout{ grid-template-columns:1fr; }
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+  }
+
+  .input-panel{
+    padding:20px;
+    position:sticky;
+    top:20px;
+  }
+  @media (max-width:860px){
+    .input-panel{ position:static; }
+  }
+
+  /* Desktop: fill the viewport and let each pane scroll independently —
+     whichever column the mouse is over is the one that scrolls. */
+  @media (min-width:861px){
+    html, body{ height:100%; }
+    body{ overflow:hidden; }
+    .app{ height:100vh; display:flex; flex-direction:column; padding:24px 20px 20px; }
+    .layout{ flex:1 1 auto; min-height:0; align-items:stretch; }
+    .input-panel{ position:static; top:auto; overflow-y:auto; min-height:0; }
+    .results-panel{ overflow-y:auto; min-height:0; }
+  }
+
+  .field-group{ margin-bottom:18px; }
+  .field-group:last-of-type{ margin-bottom:0; }
+
+  label{
+    display:block;
+    font-family:var(--font-mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+
+  textarea{
+    width:100%;
+    min-height:120px;
+    resize:vertical;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-family:var(--font-mono);
+    font-size:13px;
+    color:var(--ink);
+    background:#FCFBF8;
+  }
+  textarea::placeholder,
+  input::placeholder{ color:var(--ink-ghost); }
+
+  input[type="number"], input[type="text"], select{
+    width:100%;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-family:var(--font-mono);
+    font-size:13px;
+    color:var(--ink);
+    background:#FCFBF8;
+  }
+
+  .hint{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    line-height:1.5;
+  }
+  .hint.warn{ color:var(--warn); }
+
+  .inline{
+    display:grid;
+    grid-template-columns:1fr 90px;
+    gap:12px;
+  }
+
+  .stock-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .stock-header label{ margin-bottom:0; }
+
+  .mode-toggle{
+    display:flex;
+    gap:8px;
+  }
+  .mode-btn{
+    flex:1;
+    padding:9px 10px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.03em;
+    border:1px solid var(--line);
+    background:#FCFBF8;
+    color:var(--ink-soft);
+    border-radius:8px;
+    cursor:pointer;
+  }
+  .mode-btn:hover{ border-color:var(--blue); color:var(--blue); }
+  .mode-btn.active{ background:var(--blue); border-color:var(--blue); color:#fff; }
+
+  .stock-row-grid3{
+    display:grid;
+    grid-template-columns:1fr 1fr 68px;
+    gap:8px;
+    margin-bottom:8px;
+  }
+
+  .sheet-svg-wrap{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+    background:var(--waste-bg);
+    margin-bottom:12px;
+    line-height:0;
+  }
+  .sheet-svg-wrap svg{ display:block; width:100%; height:auto; }
+  .sheet-piece-rect{ stroke:rgba(255,255,255,0.7); stroke-width:1; }
+  .sheet-piece-label{
+    font-family:var(--font-mono);
+    fill:#fff;
+    text-anchor:middle;
+    dominant-baseline:middle;
+    pointer-events:none;
+  }
+  .sheet-remnant-rect{ fill:var(--waste-bg); stroke:var(--waste-line); stroke-width:1; stroke-dasharray:3,2; }
+
+  .btn-ghost{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.04em;
+    color:var(--blue);
+    background:none;
+    border:1px solid var(--blue);
+    border-radius:6px;
+    padding:5px 10px;
+    cursor:pointer;
+  }
+  .btn-ghost:hover{ background:var(--blue); color:#fff; }
+
+  .btn-add-row{
+    width:100%;
+    margin-top:4px;
+    padding:10px 16px;
+    background:none;
+    color:var(--blue);
+    border:1px dashed var(--blue);
+    border-radius:8px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.04em;
+    cursor:pointer;
+  }
+  .btn-add-row:hover{ background:var(--blue); color:#fff; border-style:solid; }
+
+  .stock-row{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px 14px;
+    margin-bottom:12px;
+  }
+  .stock-row:last-child{ margin-bottom:0; }
+  .stock-row-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .stock-row-index{
+    font-family:var(--font-mono);
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.1em;
+    color:var(--blue);
+  }
+  .stock-row-grid{
+    display:grid;
+    grid-template-columns:1fr 76px;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .stock-row-grid2{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .stock-row .mini-label{
+    font-family:var(--font-mono);
+    font-size:10px;
+    color:var(--ink-faint);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    margin-bottom:4px;
+    display:block;
+  }
+  .stock-row input{ background:#fff; }
+  .row-remove{
+    width:24px;
+    height:24px;
+    border-radius:6px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--warn);
+    cursor:pointer;
+    font-size:14px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+  }
+  .row-remove:hover{ background:var(--warn-bg); }
+  .row-remove:disabled{
+    opacity:0.3;
+    cursor:not-allowed;
+  }
+
+  .parts-head{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) 52px 28px;
+    gap:8px;
+    margin-bottom:5px;
+  }
+  .parts-head span{
+    font-family:var(--font-mono);
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--ink-faint);
+  }
+  .part-row{ margin-bottom:8px; }
+  .part-main{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) 52px 28px;
+    gap:8px;
+    align-items:center;
+  }
+  .part-row input{ background:#fff; }
+  .part-row .row-remove{ width:28px; height:34px; }
+  #partsTable:empty{ display:none; }
+
+  /* per-row info-fields summary + editor */
+  .pf-summary{
+    width:100%;
+    height:34px;
+    display:flex;
+    align-items:center;
+    gap:4px;
+    text-align:left;
+    padding:0 6px 0 8px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#fff;
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .pf-summary .pf-sum-txt{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pf-summary .pf-caret{
+    flex-shrink:0;
+    color:var(--blue);
+    font-size:10px;
+    transform:rotate(-90deg);
+    transition:transform 0.12s ease;
+  }
+  .pf-summary.empty{ color:var(--ink-ghost); }
+  .pf-summary.empty .pf-caret{ color:var(--ink-faint); }
+  .pf-summary:hover{ border-color:var(--blue); background:#F7FAFB; }
+  .pf-summary.open{ border-color:var(--blue); border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  .pf-summary.open .pf-caret{ transform:rotate(0deg); }
+  .part-fields{
+    margin:6px 0 4px 0;
+    padding:10px;
+    border:1px dashed var(--line);
+    border-radius:8px;
+    background:#FCFBF8;
+  }
+  .pf-row{
+    display:grid;
+    grid-template-columns:minmax(0,0.9fr) minmax(0,1.3fr) 24px;
+    gap:6px;
+    margin-bottom:6px;
+    align-items:center;
+  }
+  .pf-row input{ background:#fff; font-size:12px; }
+  .pf-row .row-remove{ width:24px; height:32px; }
+  .pf-add{
+    width:100%;
+    padding:6px;
+    background:none;
+    color:var(--blue);
+    border:1px dashed var(--blue);
+    border-radius:6px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    cursor:pointer;
+  }
+  .pf-add:hover{ background:var(--blue); color:#fff; border-style:solid; }
+
+  /* CSV column-role mapper */
+  .col-map{
+    margin-top:10px;
+    padding:10px 12px;
+    border:1px solid var(--blue);
+    border-radius:8px;
+    background:#F4F1EA;
+  }
+  .col-map-title{
+    font-family:var(--font-mono);
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--blue);
+    margin-bottom:8px;
+  }
+  .cm-row{
+    display:grid;
+    grid-template-columns:16px minmax(0,1fr) 108px;
+    gap:8px;
+    align-items:center;
+    margin-bottom:6px;
+    border-radius:6px;
+  }
+  .cm-row:last-child{ margin-bottom:0; }
+  .cm-grip{ cursor:grab; color:var(--ink-faint); font-size:13px; line-height:1; user-select:none; text-align:center; }
+  .cm-row.cm-dragging{ opacity:0.4; }
+  .cm-row.cm-over{ box-shadow:0 0 0 2px var(--blue) inset; }
+  .cm-col-name{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--ink);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .cm-row select{ background:#fff; }
+
+  .parts-section{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px;
+    margin-bottom:12px;
+    background:var(--paper);
+  }
+  .parts-section .section-cap{
+    font-family:var(--font-mono);
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--ink-faint);
+    margin-bottom:8px;
+  }
+  .parts-section textarea{ background:#fff; margin-bottom:0; }
+  .cap-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .cap-row .btn-ghost{ padding:4px 8px; }
+  .parts-section.drop-active{
+    border-color:var(--blue);
+    border-style:dashed;
+    background:var(--rust-soft);
+  }
+  .parts-section .btn-add-row{ margin-top:10px; }
+
+  .units-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:12px;
+  }
+  .units-row label{ margin-bottom:0; }
+  .units-row select{ max-width:120px; }
+
+  .btn-reset{
+    width:100%;
+    margin-top:16px;
+    padding:9px 16px;
+    background:none;
+    color:var(--warn);
+    border:1px solid var(--warn);
+    border-radius:8px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.02em;
+    cursor:pointer;
+  }
+  .btn-reset:hover{ background:var(--warn-bg); }
+
+  .btn-primary{
+    width:100%;
+    margin-top:8px;
+    padding:12px 16px;
+    background:var(--blue);
+    color:#fff;
+    border:none;
+    border-radius:8px;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:14px;
+    letter-spacing:0.01em;
+    cursor:pointer;
+    transition:background 0.15s ease;
+  }
+  .btn-primary:hover{ background:var(--blue-deep); }
+
+  .btn-secondary{
+    width:100%;
+    margin-top:8px;
+    padding:9px 16px;
+    background:none;
+    color:var(--blue);
+    border:1px solid var(--blue);
+    border-radius:8px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.02em;
+    cursor:pointer;
+  }
+  .btn-secondary:hover{ background:var(--blue); color:#fff; }
+  .btn-secondary.copied{ background:var(--green); border-color:var(--green); color:#fff; }
+
+  .results-panel{
+    padding:22px;
+    min-height:400px;
+  }
+
+  .empty-state{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    justify-content:center;
+    min-height:360px;
+    color:var(--ink-soft);
+    max-width:420px;
+  }
+  .empty-state .glyph{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--rust);
+    margin-bottom:10px;
+  }
+  .empty-state p{ margin:0 0 8px; }
+
+  .error-box{
+    background:var(--warn-bg);
+    border:1px solid var(--warn);
+    color:var(--warn);
+    border-radius:8px;
+    padding:12px 14px;
+    font-size:13px;
+    margin-bottom:18px;
+  }
+  .error-box strong{ display:block; margin-bottom:4px; font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; }
+
+  .stat-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:12px;
+    margin-bottom:22px;
+  }
+  @media (max-width:760px){
+    .stat-row{ grid-template-columns:repeat(2, 1fr); }
+  }
+  .stat-card{
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:12px 14px;
+    background:#FCFBF8;
+  }
+  .stat-card .stat-label{
+    font-family:var(--font-mono);
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  .stat-card .stat-value{
+    font-family:var(--font-display);
+    font-size:20px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .stat-card .stat-value.accent{ color:var(--blue); }
+  .stat-card .stat-value.warn{ color:var(--rust); }
+  .stat-card .stat-sub{
+    font-size:11px;
+    color:var(--ink-faint);
+    margin-top:2px;
+  }
+
+  .section-title{
+    font-family:var(--font-mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.1em;
+    color:var(--ink-soft);
+    margin:0 0 10px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .section-title::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:var(--line);
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  th{
+    text-align:left;
+    font-family:var(--font-mono);
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--ink-soft);
+    padding:6px 10px;
+    border-bottom:1px solid var(--line);
+  }
+  td{
+    padding:8px 10px;
+    border-bottom:1px solid var(--line);
+    font-family:var(--font-mono);
+  }
+  tr:last-child td{ border-bottom:none; }
+
+  .purchase-wrap{ margin-bottom:26px; }
+
+  .bins-wrap{ display:flex; flex-direction:column; gap:16px; }
+
+  .bin-card{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px 16px;
+    background:#FCFBF8;
+  }
+  .bin-card-head{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    margin-bottom:10px;
+    flex-wrap:wrap;
+  }
+  .bin-index{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .bin-type{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--ink-soft);
+  }
+  .bin-fill{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--green);
+    margin-left:auto;
+  }
+  .bin-fill.low{ color:var(--rust); }
+
+  .bin-bar{
+    display:flex;
+    height:38px;
+    border-radius:8px;
+    overflow:hidden;
+    border:1px solid var(--line);
+    position:relative;
+    background:var(--waste-bg);
+    margin-bottom:12px;
+  }
+  .bin-bar::before{
+    content:"";
+    position:absolute;
+    top:2px; left:2px; right:2px;
+    height:6px;
+    background:linear-gradient(to bottom, rgba(255,255,255,0.55), rgba(255,255,255,0));
+    border-radius:6px 6px 0 0;
+    pointer-events:none;
+    z-index:2;
+  }
+  .segment{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:#fff;
+    font-family:var(--font-mono);
+    font-size:11px;
+    white-space:nowrap;
+    overflow:hidden;
+    position:relative;
+    min-width:2px;
+  }
+  .kerf-mark{
+    min-width:2px;
+    background:var(--ink);
+    opacity:0.55;
+    flex-shrink:0;
+  }
+  .remnant-seg{
+    background:repeating-linear-gradient(
+      -45deg,
+      var(--waste-bg),
+      var(--waste-bg) 4px,
+      var(--waste-line) 4px,
+      var(--waste-line) 5px
+    );
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--font-mono);
+    font-size:10px;
+    color:var(--ink-soft);
+    white-space:nowrap;
+    overflow:hidden;
+  }
+
+  .cut-order-table th, .cut-order-table td{ font-size:12px; padding:5px 10px; }
+
+  .legend-row{
+    display:flex;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-bottom:18px;
+    font-size:12px;
+    color:var(--ink-soft);
+    align-items:center;
+  }
+  .legend-item{ display:flex; align-items:center; gap:6px; }
+  .legend-swatch{
+    width:12px; height:12px; border-radius:3px; display:inline-block;
+  }
+  .legend-swatch.kerf{ background:var(--ink); opacity:0.55; width:3px; }
+  .legend-swatch.remnant{
+    background:repeating-linear-gradient(-45deg, var(--waste-bg), var(--waste-bg) 3px, var(--waste-line) 3px, var(--waste-line) 4px);
+    border:1px solid var(--waste-line);
+  }
+
+  .footnote{
+    margin-top:24px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+    font-size:12px;
+    color:var(--ink-faint);
+    line-height:1.6;
+  }
+
+  .copy-btn{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.04em;
+    color:var(--blue);
+    background:none;
+    border:1px solid var(--blue);
+    border-radius:6px;
+    padding:6px 12px;
+    cursor:pointer;
+    margin-bottom:20px;
+  }
+  .copy-btn:hover{ background:var(--blue); color:#fff; }
+  .copy-btn.copied{ background:var(--green); border-color:var(--green); color:#fff; }
+
+  .action-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+  }
+  .action-row .copy-btn{ margin-bottom:0; }
+
+  .run-meta{
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--ink-faint);
+    margin-bottom:16px;
+  }
+
+  /* remnants summary */
+  #remnantsWrap{ margin-bottom:22px; }
+  .remnant-sheets{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+    gap:14px;
+  }
+  .remnant-sheet .cap{
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-bottom:5px;
+  }
+  .remnant-svg-wrap{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+    background:#fff;
+    line-height:0;
+  }
+  .remnant-svg-wrap svg{ display:block; width:100%; height:auto; }
+  .remnant-sheet-outline{ fill:none; stroke:var(--waste-line); stroke-width:1; }
+  .remnant-free{ fill:var(--green); fill-opacity:0.16; stroke:var(--green); stroke-width:1; }
+  .remnant-free-label{ font-family:var(--font-mono); fill:var(--green); text-anchor:middle; dominant-baseline:middle; }
+
+  /* printable label sheet */
+  #labelSheet h2{ font-family:var(--font-display); font-size:20px; margin:0 0 4px; }
+  .label-grid{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:8px;
+    margin-bottom:6px;
+  }
+  .label-stock-head{
+    grid-column:1 / -1;
+    font-family:var(--font-mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--ink-soft);
+    margin:14px 0 4px;
+  }
+  .label-card{
+    border:1px solid var(--ink);
+    border-radius:6px;
+    padding:8px 10px;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+  .label-card .lc-name{ font-family:var(--font-display); font-weight:600; font-size:14px; line-height:1.2; }
+  .label-card .lc-dim{ font-family:var(--font-mono); font-size:12px; margin-top:2px; }
+  .label-card .lc-meta{ font-family:var(--font-mono); font-size:10px; color:var(--ink-soft); margin-top:3px; }
+  /* a colored grouping band on the left edge — small, to save ink and keep text legible */
+  .label-card.has-band{ position:relative; padding-left:18px; }
+  .label-card.has-band::before{
+    content:"";
+    position:absolute; left:0; top:0; bottom:0;
+    width:10px;
+    background:var(--band);
+    border-radius:6px 0 0 6px;
+  }
+
+  /* small color swatch shown in the parts list and field editor */
+  .lbl-dot{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; border:1px solid rgba(0,0,0,0.15); }
+  .pf-color{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .pf-color label{ margin-bottom:0; flex-shrink:0; }
+  .pf-color input{ background:#fff; font-size:12px; }
+
+  .floating-actions{
+    position:fixed;
+    left:20px;
+    bottom:20px;
+    display:flex;
+    gap:8px;
+    z-index:60;
+  }
+  .fab-optimize{
+    padding:12px 22px;
+    border:none;
+    border-radius:10px;
+    background:var(--blue);
+    color:#fff;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:14px;
+    cursor:pointer;
+    box-shadow:0 4px 14px rgba(18,51,63,0.28);
+  }
+  .fab-optimize:hover{ background:var(--blue-deep); }
+  .fab-reset{
+    padding:12px 16px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--panel);
+    color:var(--warn);
+    font-family:var(--font-mono);
+    font-size:12px;
+    cursor:pointer;
+    box-shadow:0 4px 14px rgba(18,51,63,0.16);
+  }
+  .fab-reset:hover{ background:var(--warn-bg); }
+  @media (max-width:860px){
+    .fab-optimize{ padding:11px 18px; font-size:13px; }
+  }
+
+  @media print{
+    .floating-actions, .help-btn, .modal-overlay{ display:none !important; }
+    body.label-print-mode .app-header,
+    body.label-print-mode .layout{ display:none !important; }
+    body.label-print-mode #labelSheet{ display:block !important; }
+  }
+
+  @media print{
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    @page{ margin:14mm; }
+    body{ background:#fff; font-size:12px; }
+    .app{ max-width:none; padding:0; }
+    .app-header{ border-bottom:1px solid #999; margin-bottom:14px; padding-bottom:10px; }
+    .app-header .sub{ display:none; }
+    .layout{ display:block; }
+    .input-panel{ display:none; }
+    .panel{ border:none; }
+    .results-panel{ padding:0; min-height:0; }
+    .action-row{ display:none; }
+    .empty-state{ display:none; }
+    .bin-card{ break-inside:avoid; page-break-inside:avoid; border:1px solid #999; }
+    .stat-card{ border:1px solid #999; }
+    .footnote{ font-size:10px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <button class="help-btn" id="helpBtn" type="button">? How to use</button>
+    <h1>Cutlist Optimizer</h1>
+    <p class="sub">Paste cut lengths, set stock and kerf, get a cut order sized and priced against what the yard actually sells.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel input-panel">
+
+      <div class="field-group">
+        <label>Mode</label>
+        <div class="mode-toggle" id="modeToggle">
+          <button type="button" class="mode-btn active" data-mode="linear">Linear</button>
+          <button type="button" class="mode-btn" data-mode="sheet">Sheet goods</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="stock-header">
+          <label style="margin-bottom:0;" id="stockHeaderLabel">Stock lengths on offer</label>
+        </div>
+        <div id="stockTable"></div>
+        <button class="btn-add-row" id="addStockBtn" type="button">+ Add length</button>
+        <div class="hint" id="stockHint">Leave quantity blank for unlimited stock at that length. Each row can use its own unit — handy when the yard prices big stock in feet but you're cutting in inches.</div>
+      </div>
+
+      <div class="field-group">
+        <label for="partsBulk" id="cutlistLabel">Cut lengths</label>
+
+        <div class="units-row">
+          <label for="unitSelect">Units</label>
+          <select id="unitSelect">
+            <option value="in">in</option>
+            <option value="ft">ft</option>
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+          </select>
+        </div>
+
+        <div class="parts-section" id="pasteSection">
+          <div class="section-cap cap-row">
+            <span>Paste, drop, or open a list</span>
+            <button class="btn-ghost" id="fileBtn" type="button">Choose file…</button>
+            <input type="file" id="fileInput" accept=".csv,.txt,text/csv,text/plain" hidden>
+          </div>
+          <textarea id="partsBulk" spellcheck="false" placeholder="One per line, or a CSV. A Grasshopper dump works as-is:
+38
+24
+60.5 x 2"></textarea>
+          <div class="col-map" id="colMap" hidden>
+            <div class="col-map-title">Assign columns</div>
+            <div id="colMapRows"></div>
+          </div>
+          <button class="btn-secondary" id="addPartsBtn" type="button" style="margin-top:8px;">Add to list</button>
+          <div class="hint" id="dropHint" style="margin-top:8px;">Paste, drop a .csv/.txt file, or choose one — it loads above so you can map columns, then click Add. Duplicates combine into a quantity.</div>
+        </div>
+
+        <div class="parts-section">
+          <div class="section-cap">Part list</div>
+          <div id="partsTable"></div>
+          <button class="btn-add-row" id="addPartBtn" type="button">+ Add part</button>
+        </div>
+
+        <div class="hint" id="parseHint"></div>
+      </div>
+
+      <div class="field-group inline">
+        <div>
+          <label for="kerfInput">Kerf</label>
+          <input type="number" id="kerfInput" value="0.125" step="any" min="0">
+        </div>
+        <div>
+          <label for="kerfUnitSelect">Kerf unit</label>
+          <select id="kerfUnitSelect">
+            <option value="in">in</option>
+            <option value="mm">mm</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-group" id="rotateGroup" hidden>
+        <label style="margin-bottom:6px;"><input type="checkbox" id="allowRotateInput" checked style="width:auto;margin-right:6px;vertical-align:middle;">Allow pieces to rotate 90°</label>
+        <div class="hint">Turn this off if the sheet has a grain direction or directional pattern that must stay aligned.</div>
+      </div>
+
+      <button class="btn-primary" id="optimizeBtn" type="button">Optimize cutlist</button>
+      <button class="btn-secondary" id="shareLinkBtn" type="button">Copy link to this cutlist</button>
+      <div class="hint" style="margin-top:8px;">The link encodes everything on this page. Works once this page is open in its own browser tab — inside a chat preview, the address bar isn't live.</div>
+      <button class="btn-reset" id="resetBtn" type="button">Reset — clear everything</button>
+    </aside>
+
+    <main class="panel results-panel" id="resultsPanel">
+      <div class="empty-state" id="emptyState">
+        <div class="glyph">— Awaiting input —</div>
+        <p id="emptyStateP1">Paste your cut lengths on the left, set a stock length and kerf, then optimize.</p>
+        <p id="emptyStateP2">With more than one stock length listed, the optimizer weighs material use against price and picks the mix that costs least for the full list.</p>
+      </div>
+
+      <div id="resultsContent" hidden>
+        <div id="errorArea"></div>
+        <div class="run-meta" id="runMeta"></div>
+        <div class="stat-row" id="statRow"></div>
+
+        <div class="purchase-wrap">
+          <h3 class="section-title">Purchase list</h3>
+          <table id="purchaseTable"></table>
+        </div>
+
+        <div class="action-row">
+          <button class="copy-btn" id="copyBtn" type="button">Copy cut plan as text</button>
+          <button class="copy-btn" id="csvBtn" type="button">Download CSV</button>
+          <button class="copy-btn" id="printBtn" type="button">Print / save as PDF</button>
+          <button class="copy-btn" id="printLabelsBtn" type="button">Print labels in cut order</button>
+        </div>
+
+        <h3 class="section-title">Cut plan, by stock piece</h3>
+        <div class="legend-row" id="legendRow"></div>
+        <div class="bins-wrap" id="binsWrap"></div>
+
+        <h3 class="section-title" id="remnantsTitle">All remnants</h3>
+        <div id="remnantsWrap"></div>
+
+        <div class="footnote" id="footnoteText">
+          Optimization uses a best-fit-decreasing heuristic: pieces are placed largest-first into whichever open stock piece, or new stock option, uses the most material per dollar. It's fast and close to optimal in practice, but the general cutting-stock problem is NP-hard — for very large or unusual lists, a marginally better arrangement may exist. Kerf is charged between pieces sharing a stock piece, not after the last one.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- printable label sheet (cut order); shown only when printing labels -->
+  <div id="labelSheet" hidden></div>
+</div>
+
+<div class="floating-actions" id="floatingActions">
+  <button class="fab-reset" id="fabReset" type="button" title="Reset — clear everything">Reset</button>
+  <button class="fab-optimize" id="fabOptimize" type="button">Optimize ↑</button>
+</div>
+
+<div class="modal-overlay" id="helpModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <button class="modal-close" id="helpClose" type="button" aria-label="Close">×</button>
+    <h2 id="helpTitle">How to use</h2>
+    <p class="modal-lead">Paste your parts, list the stock the yard sells, and optimize. The tool packs your cuts to cost the least and gives you a cut order, offcuts, and printable labels.</p>
+
+    <h3>1 · Mode</h3>
+    <p><strong>Linear</strong> is for bar/tube/extrusion cut to length. <strong>Sheet goods</strong> nests 2D parts (W × H) onto sheets.</p>
+
+    <h3>2 · Stock</h3>
+    <p>List every stock size the yard offers, each with a price. Leave <strong>Qty</strong> blank for unlimited. With more than one option the optimizer picks the mix that costs least. Each stock row can use its own unit.</p>
+
+    <h3>3 · Parts</h3>
+    <p>Type parts, paste a list, drop a <strong>.csv/.txt</strong> file, or choose one from disk. A plain list is 1 of each; identical parts combine into a quantity you can edit. <strong>Units</strong> at the top set what your part sizes are in.</p>
+
+    <h3>4 · Mapping CSV columns</h3>
+    <p>When you paste a spreadsheet with a header row, the <strong>Assign columns</strong> panel lets you tell the tool what each column is:</p>
+    <ul>
+      <li><strong>Length / Width / Height / Size</strong> — the dimension to cut. Pick the right one when several columns hold numbers.</li>
+      <li><strong>Qty</strong> — how many of each part.</li>
+      <li><strong>Label color</strong> — groups parts by color on the printed label (see below).</li>
+      <li><strong>Info</strong> — becomes part of the label text (e.g. part name, bend radius).</li>
+      <li><strong>Ignore</strong> — dropped.</li>
+    </ul>
+    <p>Drag the ⠿ handles to set the order info fields appear on the label.</p>
+
+    <h3>5 · Label color</h3>
+    <p>A color value can be a real color (<code>blue</code>, <code>#B8451F</code>) or any group name (<code>Zone A</code>) — group names get a consistent color automatically. Printed labels get a colored edge band for that group; the rest stays white to save ink.</p>
+
+    <h3>6 · Kerf</h3>
+    <p>The blade width lost per cut, in its own inch/mm unit. It's charged between parts sharing a stock piece.</p>
+
+    <h3>7 · Results</h3>
+    <p><strong>Optimize</strong> gives a purchase list, a cut plan per stock piece, and an <strong>All remnants</strong> summary of your offcuts. Export the plan as <strong>text</strong>, <strong>CSV</strong>, or <strong>PDF</strong>, <strong>Print labels in cut order</strong>, or <strong>copy a link</strong> that restores everything.</p>
+
+    <p class="modal-foot">Tip: the parts list and results scroll independently — hover over the one you want to scroll.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+
+  // ---------- state ----------
+  let mode = 'linear'; // 'linear' | 'sheet'
+  let stockRows = [
+    { id: 1, length: '', width: '', height: '', unit: 'in', price: '', qty: '', label: '' }
+  ];
+  let nextStockId = 2;
+  let lastResult = null;
+
+  // parts list: one row per unique value+fields, with an editable quantity (default 1)
+  let partRows = [ { id: 1, value: '', qty: 1, fields: [], color: '' } ];
+  let nextPartId = 2;
+  const expandedParts = new Set(); // part ids whose info-field editor is open
+  let colRoles = null;        // role per CSV column when the paste box holds a header row
+  let colOrder = null;        // display/label order of CSV columns (drag to rearrange)
+  let lastHeaderSig = '';     // header line last mapped, so user choices survive edits
+
+  const PALETTE = ['#1F4B5F','#B8451F','#5C6B3C','#8A6A2F','#3E6350','#6B4C6B','#3E5A6B','#7A4B3E',
+                   '#2E7E7A','#9C6B2B','#4A7A4A','#8A3B54','#55588A','#A85A32','#7E8A46','#40707E'];
+
+  // ---------- unit conversion (base unit: inches) ----------
+  const UNIT_TO_IN = { in: 1, ft: 12, mm: 1/25.4, cm: 1/2.54 };
+  function toBase(value, u){ return value * (UNIT_TO_IN[u] || 1); }
+  function fromBase(value, u){ return value / (UNIT_TO_IN[u] || 1); }
+
+  // ---------- helpers ----------
+  function fmt(n){
+    if (!isFinite(n)) return '—';
+    const r = Math.round(n * 1000) / 1000;
+    return r.toString();
+  }
+  function fmtMoney(n){
+    return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function unit(){ return document.getElementById('unitSelect').value; }
+  // Colors are assigned per run: each distinct size, in sorted order, gets the
+  // next palette entry — so distinct sizes are always distinct colors (a hash
+  // to a fixed palette would collide, e.g. 40x80 and 19x48 landing the same).
+  let colorAssign = new Map();
+  function shiftColor(hex, tier){
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+    const amt = (tier % 2 === 1) ? 0.30 : -0.22; // alternate lighten / darken past the palette
+    const adj = c => Math.max(0, Math.min(255, Math.round(amt > 0 ? c + (255-c)*amt : c + c*amt)));
+    return '#' + [adj(r), adj(g), adj(b)].map(c => c.toString(16).padStart(2,'0')).join('');
+  }
+  function paletteColor(i){
+    if (i < PALETTE.length) return PALETTE[i];
+    return shiftColor(PALETTE[i % PALETTE.length], Math.floor(i / PALETTE.length));
+  }
+  function assignColors(orderedKeys){
+    colorAssign = new Map();
+    orderedKeys.forEach((k, i) => colorAssign.set(String(k), paletteColor(i)));
+  }
+  function colorFor(key){ return colorAssign.get(String(key)) || PALETTE[0]; }
+  // canonical, order-independent key for a W x H pair (in display units)
+  function dimKeyOf(pw, ph, cutUnit){
+    const a = parseFloat(fmt(fromBase(pw, cutUnit))), b = parseFloat(fmt(fromBase(ph, cutUnit)));
+    return Math.min(a,b) + ' x ' + Math.max(a,b);
+  }
+
+  // ---------- label colors (grouping) ----------
+  // A color-column value can be a literal color (hex or common name) used as-is,
+  // or any group key (e.g. "Zone A") that gets a stable palette color.
+  const CSS_NAMES = new Set(['red','blue','green','yellow','orange','purple','black','white','gray','grey','pink','brown','cyan','magenta','teal','navy','maroon','olive','lime','aqua','silver','gold','beige','tan','violet','indigo','turquoise','salmon','coral','crimson']);
+  function isCssColor(v){
+    v = String(v).trim();
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) || /^rgb/i.test(v) || CSS_NAMES.has(v.toLowerCase());
+  }
+  // stable group-key -> palette color map, built from the parts list in order
+  function buildPartColorMap(){
+    const m = new Map(); let idx = 0;
+    partRows.forEach(r => { const v = String(r.color || '').trim(); if (!v || isCssColor(v)) return; const k = v.toLowerCase(); if (!m.has(k)) m.set(k, paletteColor(idx++)); });
+    return m;
+  }
+  function resolveColor(raw, map){
+    const v = String(raw || '').trim();
+    if (!v) return null;
+    if (isCssColor(v)) return v;
+    return (map && map.get(v.toLowerCase())) || paletteColor(0);
+  }
+
+  // ---------- parsing ----------
+  function parseCutlist(text){
+    const tokens = text.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+    const pieces = [];
+    const warnings = [];
+    let idCounter = 0;
+    for (const tok of tokens){
+      const m = tok.match(/^(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)$/);
+      if (m){
+        const length = parseFloat(m[1]);
+        const qty = parseInt(m[2], 10);
+        if (length <= 0 || qty <= 0){
+          warnings.push('Skipped "' + tok + '" — length and quantity must be greater than zero.');
+          continue;
+        }
+        for (let i=0;i<qty;i++) pieces.push({ id: idCounter++, length });
+      } else if (/^\d+(?:\.\d+)?$/.test(tok)){
+        const length = parseFloat(tok);
+        if (length <= 0){
+          warnings.push('Skipped "' + tok + '" — must be greater than zero.');
+          continue;
+        }
+        pieces.push({ id: idCounter++, length });
+      } else {
+        warnings.push('Couldn\'t read "' + tok + '" — expected a number, or "length x qty".');
+      }
+    }
+    return { pieces, warnings };
+  }
+
+  function parseSheetList(text){
+    const tokens = text.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+    const pieces = [];
+    const warnings = [];
+    let idCounter = 0;
+    const re = /^(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)(?:\s*[xX×*]\s*(\d+))?$/;
+    for (const tok of tokens){
+      const m = tok.match(re);
+      if (!m){
+        warnings.push('Couldn\'t read "' + tok + '" — expected "W x H" or "W x H x qty".');
+        continue;
+      }
+      const w = parseFloat(m[1]);
+      const h = parseFloat(m[2]);
+      const qty = m[3] ? parseInt(m[3], 10) : 1;
+      if (w <= 0 || h <= 0 || qty <= 0){
+        warnings.push('Skipped "' + tok + '" — dimensions and quantity must be greater than zero.');
+        continue;
+      }
+      for (let i=0;i<qty;i++) pieces.push({ id: idCounter++, w, h });
+    }
+    return { pieces, warnings };
+  }
+
+  // ---------- parts list (editable rows + bulk paste) ----------
+  // A canonical key so the same value merges into one row regardless of
+  // formatting ("24 x 36" == "24 X 36", "36" == "36.0").
+  function normKey(v){
+    v = String(v).trim();
+    if (mode === 'sheet'){
+      const m = v.match(/^(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)$/);
+      if (m) return fmt(parseFloat(m[1])) + 'x' + fmt(parseFloat(m[2]));
+      return v.toLowerCase();
+    }
+    const n = parseFloat(v);
+    return isFinite(n) ? fmt(n) : v.toLowerCase();
+  }
+  // A part row carries arbitrary named info fields ([{name,value}, …]). Rows
+  // merge only when the size AND all fields match; field-less rows merge by size.
+  function titleCase(s){ return String(s).replace(/\b\w/g, c => c.toUpperCase()); }
+  function fieldsKey(fields){ return (fields || []).map(f => String(f.name||'').trim().toLowerCase() + '=' + String(f.value||'').trim().toLowerCase()).filter(x => x !== '=').join('|'); }
+  function rowKey(value, fields, color){ return normKey(value) + '||' + fieldsKey(fields) + '||' + String(color || '').trim().toLowerCase(); }
+  // Compose a printable label from a row's fields: a name-ish field shows its
+  // value raw, the rest render as "Header: value" (e.g. "RIB-A · Bend Radius: 12").
+  function labelString(fields){
+    const fs = (fields || []).filter(f => String(f.value).trim() !== '');
+    if (!fs.length) return '';
+    const nameRe = /name|part|mark|tag|label|piece|item|\bid\b/;
+    let pIdx = fs.findIndex(f => nameRe.test(String(f.name || '').toLowerCase()));
+    if (pIdx < 0) pIdx = 0;
+    return fs.map((f, i) => {
+      const nm = String(f.name || '').trim(), v = String(f.value).trim();
+      return (i !== pIdx && nm) ? (titleCase(nm) + ': ' + v) : v;
+    }).join(' · ');
+  }
+
+  function esc(s){ return String(s).replace(/"/g,'&quot;'); }
+
+  function renderPartsTable(){
+    const wrap = document.getElementById('partsTable');
+    wrap.innerHTML = '';
+    if (!partRows.length) return;
+    const head = document.createElement('div');
+    head.className = 'parts-head';
+    head.innerHTML = '<span>' + (mode === 'sheet' ? 'Size (W x H)' : 'Length') + '</span><span>Label / info</span><span>Qty</span><span></span>';
+    wrap.appendChild(head);
+    const cmap = buildPartColorMap();
+    partRows.forEach(row => {
+      row.fields = row.fields || [];
+      const div = document.createElement('div');
+      div.className = 'part-row';
+      div.dataset.partId = row.id;
+      const open = expandedParts.has(row.id);
+      const nFields = row.fields.filter(f => String(f.value).trim() !== '').length;
+      const summary = labelString(row.fields);
+      const summaryTxt = summary || (nFields ? nFields + ' field' + (nFields===1?'':'s') : '+ info fields');
+      const swatch = resolveColor(row.color, cmap);
+      const dot = swatch ? '<span class="lbl-dot" style="background:' + swatch + '"></span>' : '';
+
+      let html =
+        '<div class="part-main">' +
+          '<input type="text" data-field="value" value="' + esc(row.value) + '" placeholder="' + (mode === 'sheet' ? '24 x 36' : '38') + '">' +
+          '<button type="button" class="pf-summary' + (summary ? '' : ' empty') + (open ? ' open' : '') + '" data-action="toggle-fields" title="Click to add a color and info fields"><span class="pf-sum-txt">' + dot + escapeHtml(summaryTxt) + '</span><span class="pf-caret">▾</span></button>' +
+          '<input type="number" min="1" step="1" data-field="qty" value="' + row.qty + '">' +
+          '<button class="row-remove" data-action="remove-part" title="Remove this part" ' + (partRows.length <= 1 ? 'disabled' : '') + '>×</button>' +
+        '</div>';
+
+      if (open){
+        html += '<div class="part-fields">';
+        html += '<div class="pf-color"><label>Color ' + (swatch ? '<span class="lbl-dot" style="background:' + swatch + '"></span>' : '') + '</label>' +
+          '<input type="text" data-color="1" value="' + esc(row.color || '') + '" placeholder="name, #hex, or a group like &quot;Zone A&quot;"></div>';
+        row.fields.forEach((f, fi) => {
+          html += '<div class="pf-row">' +
+            '<input type="text" data-fi="' + fi + '" data-fk="name" value="' + esc(f.name || '') + '" placeholder="field">' +
+            '<input type="text" data-fi="' + fi + '" data-fk="value" value="' + esc(f.value || '') + '" placeholder="value">' +
+            '<button type="button" class="row-remove" data-action="remove-field" data-fi="' + fi + '" title="Remove field">×</button>' +
+          '</div>';
+        });
+        html += '<button type="button" class="pf-add" data-action="add-field">+ info field</button>';
+        html += '</div>';
+      }
+      div.innerHTML = html;
+      wrap.appendChild(div);
+    });
+  }
+
+  function handlePartFieldChange(e){
+    const rowEl = e.target.closest('[data-part-id]');
+    if (!rowEl) return;
+    const id = parseInt(rowEl.dataset.partId, 10);
+    const row = partRows.find(r => r.id === id);
+    if (!row) return;
+    // an info field (name/value) edit
+    if (e.target.dataset.fk !== undefined && e.target.dataset.fi !== undefined){
+      const fi = parseInt(e.target.dataset.fi, 10);
+      row.fields = row.fields || [];
+      if (row.fields[fi]){ row.fields[fi][e.target.dataset.fk] = e.target.value; updateHash(); }
+      return;
+    }
+    // the label-color input
+    if (e.target.dataset.color !== undefined){ row.color = e.target.value; updateHash(); return; }
+    const field = e.target.dataset.field;
+    if (!field) return;
+    row[field] = e.target.value;
+    updateHash();
+  }
+
+  // ---------- CSV parsing (pasted or dropped) ----------
+  function isNumeric(c){ return /^\d+(?:\.\d+)?$/.test(String(c).trim()); }
+  function firstNum(c){ const m = String(c).match(/\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : NaN; }
+  function sizeCell(c){ const m = String(c).match(/(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)/); return m ? [parseFloat(m[1]), parseFloat(m[2])] : null; }
+  function looksTabular(text){ return text.split(/\r?\n/).some(l => /[,\t]/.test(l) && l.trim()); }
+
+  // First row is a header if any cell has letters (not a plain number or "WxH").
+  function headerCells(text){
+    const first = (text.split(/\r?\n/).find(l => l.trim()) || '').trim();
+    const cells = first.split(/[,\t]/).map(c => c.trim());
+    const named = c => c !== '' && !isNumeric(c) && !sizeCell(c);
+    return cells.some(named) ? cells.map(c => c.toLowerCase()) : null;
+  }
+
+  // Decide whether to treat the input as a CSV table. A header row or a dropped
+  // file always counts. Headerless sheet rows of numeric pairs count too. A
+  // bare linear list (incl. comma-separated lengths) is left to the free parser.
+  function shouldCsv(text, fromFile){
+    if (headerCells(text)) return true;
+    if (fromFile && looksTabular(text)) return true;
+    if (mode === 'sheet' && looksTabular(text)){
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      return lines.every(l => {
+        if (/[xX×*]/.test(l)) return false;
+        const cells = l.split(/[,\t]/).map(c => c.trim()).filter(Boolean);
+        return cells.length >= 2 && isNumeric(cells[0]) && isNumeric(cells[1]);
+      });
+    }
+    return false;
+  }
+
+  // Auto-assign a role to each header column by its name.
+  function autoRoles(lc){
+    const roles = lc.map(() => 'info');
+    let qtySet=false, lenSet=false, wSet=false, hSet=false, sizeSet=false;
+    let colorSet=false;
+    lc.forEach((h, i) => {
+      if (!qtySet && /^(qty|quantity|count)$/.test(h)){ roles[i]='qty'; qtySet=true; return; }
+      if (!colorSet && /^(colou?r|group|band|zone)$/.test(h)){ roles[i]='color'; colorSet=true; return; }
+      if (mode === 'sheet'){
+        if (!sizeSet && /^(size|dim|dimension|dimensions)$/.test(h)){ roles[i]='size'; sizeSet=true; return; }
+        if (!wSet && /^(width|w)$/.test(h)){ roles[i]='width'; wSet=true; return; }
+        if (!hSet && /^(height|ht|h|depth)$/.test(h)){ roles[i]='height'; hSet=true; return; }
+      } else {
+        if (!lenSet && /^(length|len|cut|long)$/.test(h)){ roles[i]='length'; lenSet=true; return; }
+      }
+    });
+    return roles;
+  }
+
+  // Roles for a header, with a first-numeric-column fallback for the dimension
+  // if no header name matched — the mapper is shown so the user can correct it.
+  function rolesFor(lc, dataRows){
+    const roles = autoRoles(lc);
+    const firstData = (dataRows[0] || '').split(/[,\t]/).map(c => c.trim());
+    const numericCol = i => firstData[i] !== undefined && isNumeric(firstData[i]);
+    const has = r => roles.indexOf(r) >= 0;
+    if (mode === 'sheet'){
+      if (!has('size') && !(has('width') && has('height'))){
+        const nums = roles.map((_, i) => i).filter(i => roles[i]==='info' && numericCol(i));
+        if (nums.length >= 2){ roles[nums[0]]='width'; roles[nums[1]]='height'; }
+      }
+    } else if (!has('length')){
+      const i = roles.findIndex((r, k) => r==='info' && numericCol(k));
+      if (i >= 0) roles[i]='length';
+    }
+    return roles;
+  }
+
+  // Parse CSV/TSV into {value,fields,qty}. With a header, an explicit column
+  // mapping (roles) decides which column is length/size/qty; the rest become
+  // info fields. Headerless input falls back to positional best-effort.
+  function csvSeeds(text, roles, order){
+    const rows = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const lc = headerCells(text);
+    const rawHeader = lc ? rows[0].split(/[,\t]/).map(c => c.trim()) : null;
+    const seeds = [], warnings = [];
+
+    if (lc){
+      const dataRows = rows.slice(1);
+      const usable = roles && roles.length === lc.length && roles.some(r => r==='length' || r==='width' || r==='size');
+      const colr = usable ? roles.slice() : rolesFor(lc, dataRows);
+      const seq = (order && order.length === colr.length) ? order : colr.map((_, i) => i);
+      const idxLen = colr.indexOf('length'), idxW = colr.indexOf('width'), idxH = colr.indexOf('height'), idxSize = colr.indexOf('size'), idxQty = colr.indexOf('qty'), idxColor = colr.indexOf('color');
+      dataRows.forEach(line => {
+        const cells = line.split(/[,\t]/).map(c => c.trim());
+        if (cells.every(c => c === '')) return;
+        let value = null, qty = 1;
+        if (mode === 'sheet'){
+          let w, h;
+          if (idxSize >= 0 && sizeCell(cells[idxSize])){ [w, h] = sizeCell(cells[idxSize]); }
+          else if (idxW >= 0 && idxH >= 0){ w = firstNum(cells[idxW]); h = firstNum(cells[idxH]); }
+          if (isFinite(w) && isFinite(h) && w > 0 && h > 0) value = fmt(w) + ' x ' + fmt(h);
+        } else if (idxLen >= 0){
+          const l = firstNum(cells[idxLen]);
+          if (isFinite(l) && l > 0) value = fmt(l);
+        }
+        if (idxQty >= 0 && isNumeric(cells[idxQty])) qty = parseInt(cells[idxQty], 10);
+        if (value === null){ warnings.push('Couldn\'t read row "' + line + '".'); return; }
+        const color = idxColor >= 0 ? (cells[idxColor] || '') : '';
+        const fields = [];
+        seq.forEach(i => { if (colr[i] !== 'info') return; const v = (cells[i] || '').trim(); if (v) fields.push({ name: rawHeader[i] || '', value: v }); });
+        seeds.push({ value, fields, qty: qty > 0 ? qty : 1, color });
+      });
+    } else {
+      rows.forEach(line => {
+        const cells = line.split(/[,\t]/).map(c => c.trim());
+        if (cells.every(c => c === '')) return;
+        const consumed = new Set();
+        let value = null, qty = 1;
+        if (mode === 'sheet'){
+          let w, h;
+          const szi = cells.findIndex(c => sizeCell(c));
+          if (szi >= 0){ [w, h] = sizeCell(cells[szi]); consumed.add(szi); }
+          else { const ni = []; cells.forEach((c,i) => { if (isNumeric(c)) ni.push(i); }); if (ni.length >= 2){ w = parseFloat(cells[ni[0]]); h = parseFloat(cells[ni[1]]); consumed.add(ni[0]); consumed.add(ni[1]); } }
+          const nq = []; cells.forEach((c,i) => { if (isNumeric(c) && !consumed.has(i)) nq.push(i); }); if (nq.length){ qty = parseInt(cells[nq[0]], 10); consumed.add(nq[0]); }
+          if (isFinite(w) && isFinite(h) && w > 0 && h > 0) value = fmt(w) + ' x ' + fmt(h);
+        } else {
+          const li = cells.findIndex(isNumeric); if (li >= 0){ const l = parseFloat(cells[li]); if (l > 0) value = fmt(l); consumed.add(li); }
+          const nq = []; cells.forEach((c,i) => { if (isNumeric(c) && !consumed.has(i)) nq.push(i); }); if (nq.length){ qty = parseInt(cells[nq[0]], 10); consumed.add(nq[0]); }
+        }
+        if (value === null){ warnings.push('Couldn\'t read row "' + line + '".'); return; }
+        const fields = [];
+        cells.forEach((c, i) => { if (consumed.has(i)) return; const v = (c || '').trim(); if (v) fields.push({ name: '', value: v }); });
+        seeds.push({ value, fields, qty: qty > 0 ? qty : 1, color: '' });
+      });
+    }
+    return { seeds, warnings };
+  }
+
+  // ---------- column mapper UI ----------
+  const ROLE_OPTS = {
+    linear: [['length','Length'],['qty','Qty'],['color','Label color'],['info','Info'],['ignore','Ignore']],
+    sheet:  [['width','Width'],['height','Height'],['size','Size (WxH)'],['qty','Qty'],['color','Label color'],['info','Info'],['ignore','Ignore']]
+  };
+
+  function currentHeader(){
+    return (document.getElementById('partsBulk').value.split(/\r?\n/).find(l => l.trim()) || '').split(/[,\t]/).map(c => c.trim());
+  }
+
+  function refreshColMap(){
+    const text = document.getElementById('partsBulk').value;
+    const lc = headerCells(text);
+    const map = document.getElementById('colMap');
+    if (!lc){ colRoles = null; colOrder = null; lastHeaderSig = ''; map.hidden = true; document.getElementById('colMapRows').innerHTML = ''; return; }
+    const rows = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rawHeader = rows[0].split(/[,\t]/).map(c => c.trim());
+    const sig = mode + '::' + rows[0];
+    if (sig !== lastHeaderSig){
+      colRoles = rolesFor(lc, rows.slice(1));
+      colOrder = rawHeader.map((_, i) => i);
+      lastHeaderSig = sig;
+    }
+    renderColMap(rawHeader);
+    map.hidden = false;
+  }
+
+  function renderColMap(rawHeader){
+    const opts = ROLE_OPTS[mode];
+    const wrap = document.getElementById('colMapRows');
+    if (!colOrder || colOrder.length !== rawHeader.length) colOrder = rawHeader.map((_, i) => i);
+    wrap.innerHTML = colOrder.map((i, pos) => {
+      const name = rawHeader[i] || ('Column ' + (i+1));
+      const sel = opts.map(([v, lbl]) => '<option value="' + v + '"' + (colRoles[i] === v ? ' selected' : '') + '>' + lbl + '</option>').join('');
+      return '<div class="cm-row" draggable="true" data-pos="' + pos + '">' +
+        '<span class="cm-grip" title="Drag to reorder">⠿</span>' +
+        '<span class="cm-col-name" title="' + esc(name) + '">' + escapeHtml(name) + '</span>' +
+        '<select data-col="' + i + '">' + sel + '</select>' +
+      '</div>';
+    }).join('');
+  }
+
+  document.getElementById('colMapRows').addEventListener('change', (e) => {
+    const col = e.target.dataset.col;
+    if (col === undefined || !colRoles) return;
+    const i = parseInt(col, 10);
+    const val = e.target.value;
+    // length/width/height/size/qty/color are single-assignment — free any other column holding it
+    if (val !== 'info' && val !== 'ignore'){
+      colRoles.forEach((r, k) => { if (k !== i && r === val) colRoles[k] = 'info'; });
+    }
+    colRoles[i] = val;
+    renderColMap(currentHeader());
+  });
+
+  // drag-to-reorder the column rows (sets the order info fields appear on the label)
+  (function(){
+    const wrap = document.getElementById('colMapRows');
+    let fromPos = null;
+    wrap.addEventListener('dragstart', (e) => {
+      const row = e.target.closest('.cm-row'); if (!row) return;
+      fromPos = parseInt(row.dataset.pos, 10);
+      row.classList.add('cm-dragging');
+      if (e.dataTransfer){ e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(fromPos)); } catch(_){} }
+    });
+    wrap.addEventListener('dragend', () => { fromPos = null; wrap.querySelectorAll('.cm-row').forEach(r => r.classList.remove('cm-dragging','cm-over')); });
+    wrap.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const row = e.target.closest('.cm-row'); if (!row) return;
+      wrap.querySelectorAll('.cm-row').forEach(r => r.classList.remove('cm-over'));
+      row.classList.add('cm-over');
+    });
+    wrap.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const row = e.target.closest('.cm-row'); if (!row || fromPos === null || !colOrder) return;
+      const toPos = parseInt(row.dataset.pos, 10);
+      if (toPos === fromPos) return;
+      const moved = colOrder.splice(fromPos, 1)[0];
+      colOrder.splice(toPos, 0, moved);
+      fromPos = null;
+      renderColMap(currentHeader());
+    });
+  })();
+
+  // Fold {value,fields,qty} seeds into the rows, merging matches (size + fields).
+  function mergeSeeds(seeds){
+    const order = [], map = new Map();
+    const seed = (value, fields, qty, color) => {
+      const key = rowKey(value, fields, color);
+      if (!map.has(key)){ map.set(key, { value, fields: fields || [], qty, color: color || '' }); order.push(key); }
+      else { const e = map.get(key); e.qty += qty; if (!(e.fields && e.fields.length) && fields && fields.length) e.fields = fields; if (!e.color && color) e.color = color; }
+    };
+    partRows.forEach(r => { if (String(r.value).trim()) seed(String(r.value).trim(), r.fields || [], parseInt(r.qty,10) || 0, r.color || ''); });
+    seeds.forEach(s => seed(s.value, s.fields || [], s.qty > 0 ? s.qty : 1, s.color || ''));
+    partRows = order.map((k, i) => ({ id: i+1, value: map.get(k).value, fields: map.get(k).fields || [], qty: map.get(k).qty, color: map.get(k).color || '' }));
+    if (!partRows.length) partRows = [ { id: 1, value: '', qty: 1, fields: [], color: '' } ];
+    nextPartId = partRows.length + 1;
+  }
+
+  // Import pasted text or a dropped file into the editable rows. Identical
+  // values are combined; a bare list becomes 1 of each.
+  function importText(text, opts){
+    opts = opts || {};
+    let seeds, warnings;
+    if (shouldCsv(text, opts.fromFile)){
+      ({ seeds, warnings } = csvSeeds(text, opts.roles, opts.order));
+    } else {
+      const parsed = mode === 'sheet' ? parseSheetList(text) : parseCutlist(text);
+      warnings = parsed.warnings;
+      seeds = parsed.pieces.map(p => ({ value: mode === 'sheet' ? (fmt(p.w) + ' x ' + fmt(p.h)) : fmt(p.length), fields: [], qty: 1, color: '' }));
+    }
+    mergeSeeds(seeds);
+    renderPartsTable();
+
+    const hint = document.getElementById('parseHint');
+    const total = partRows.reduce((s, r) => s + (parseInt(r.qty,10) || 0), 0);
+    if (warnings.length){
+      hint.className = 'hint warn';
+      hint.textContent = warnings.join(' ');
+    } else {
+      hint.className = 'hint';
+      hint.textContent = total + (mode === 'sheet' ? (' part' + (total===1?'':'s')) : (' piece' + (total===1?'':'s'))) + ' in list.';
+    }
+    updateHash();
+  }
+
+  function importBulk(){
+    const el = document.getElementById('partsBulk');
+    importText(el.value, { roles: colRoles, order: colOrder, fromFile: stagedFromFile });
+    el.value = '';
+    stagedFromFile = false;
+    refreshColMap();
+  }
+
+  // Expand the editable rows into the flat piece list the optimizer consumes.
+  function collectParts(){
+    const pieces = [];
+    const warnings = [];
+    let idCounter = 0;
+    const cmap = buildPartColorMap();
+    partRows.forEach(r => {
+      const value = String(r.value).trim();
+      if (!value) return;
+      const label = labelString(r.fields);
+      const colorCss = resolveColor(r.color, cmap);
+      const q = parseInt(r.qty, 10);
+      const qty = (isFinite(q) && q > 0) ? q : 1;
+      // a labeled row with qty > 1 auto-numbers its pieces (RIB-A #1, #2, …)
+      const pieceLabel = i => (label && qty > 1) ? (label + ' #' + (i+1)) : label;
+      if (mode === 'sheet'){
+        const m = value.match(/^(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)$/);
+        if (!m){ warnings.push('Couldn\'t read "' + value + '" — expected "W x H".'); return; }
+        const w = parseFloat(m[1]), h = parseFloat(m[2]);
+        if (w <= 0 || h <= 0){ warnings.push('Skipped "' + value + '" — dimensions must be greater than zero.'); return; }
+        for (let i=0;i<qty;i++) pieces.push({ id: idCounter++, w, h, label: pieceLabel(i), colorCss });
+      } else {
+        if (!/^\d+(?:\.\d+)?$/.test(value)){ warnings.push('Couldn\'t read "' + value + '" — expected a number.'); return; }
+        const length = parseFloat(value);
+        if (length <= 0){ warnings.push('Skipped "' + value + '" — must be greater than zero.'); return; }
+        for (let i=0;i<qty;i++) pieces.push({ id: idCounter++, length, label: pieceLabel(i), colorCss });
+      }
+    });
+    return { pieces, warnings };
+  }
+
+  // A dropped/chosen file (or dragged text) loads into the box so the column
+  // mapper can show; nothing imports until the user clicks Add.
+  let stagedFromFile = false;
+  function loadFileIntoBox(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById('partsBulk').value = String(reader.result || '');
+      stagedFromFile = true;
+      refreshColMap();
+    };
+    reader.readAsText(file);
+  }
+  function putTextInBox(text){
+    const el = document.getElementById('partsBulk');
+    el.value = el.value.trim() ? (el.value.replace(/\s+$/,'') + '\n' + text) : text;
+    stagedFromFile = false;
+    refreshColMap();
+  }
+
+  document.getElementById('addPartsBtn').addEventListener('click', importBulk);
+  document.getElementById('partsBulk').addEventListener('input', () => { stagedFromFile = false; refreshColMap(); });
+  document.getElementById('fileBtn').addEventListener('click', () => document.getElementById('fileInput').click());
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) loadFileIntoBox(f);
+    e.target.value = '';
+  });
+
+  // drag-and-drop a .csv / .txt file (or dragged text) onto the paste section
+  (function(){
+    const zone = document.getElementById('pasteSection');
+    const stop = e => { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter','dragover'].forEach(ev => zone.addEventListener(ev, e => { stop(e); zone.classList.add('drop-active'); }));
+    ['dragleave','dragend'].forEach(ev => zone.addEventListener(ev, e => {
+      stop(e);
+      if (ev === 'dragleave' && zone.contains(e.relatedTarget)) return;
+      zone.classList.remove('drop-active');
+    }));
+    zone.addEventListener('drop', e => {
+      stop(e);
+      zone.classList.remove('drop-active');
+      const dt = e.dataTransfer;
+      if (dt && dt.files && dt.files.length){ loadFileIntoBox(dt.files[0]); }
+      else if (dt){ const txt = dt.getData('text'); if (txt) putTextInBox(txt); }
+    });
+  })();
+
+  document.getElementById('addPartBtn').addEventListener('click', () => {
+    partRows.push({ id: nextPartId++, value: '', qty: 1, fields: [], color: '' });
+    renderPartsTable();
+    updateHash();
+  });
+  document.getElementById('partsTable').addEventListener('input', handlePartFieldChange);
+  document.getElementById('partsTable').addEventListener('change', handlePartFieldChange);
+  document.getElementById('partsTable').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const rowEl = e.target.closest('[data-part-id]');
+    if (!rowEl) return;
+    const id = parseInt(rowEl.dataset.partId, 10);
+    const row = partRows.find(r => r.id === id);
+    if (action === 'remove-part'){
+      if (partRows.length > 1){
+        partRows = partRows.filter(r => r.id !== id);
+        expandedParts.delete(id);
+        renderPartsTable();
+        updateHash();
+      }
+    } else if (action === 'toggle-fields'){
+      if (!row) return;
+      row.fields = row.fields || [];
+      if (expandedParts.has(id)) expandedParts.delete(id);
+      else { expandedParts.add(id); if (!row.fields.length) row.fields.push({ name: '', value: '' }); }
+      renderPartsTable();
+    } else if (action === 'add-field'){
+      if (!row) return;
+      row.fields = row.fields || [];
+      row.fields.push({ name: '', value: '' });
+      expandedParts.add(id);
+      renderPartsTable();
+      updateHash();
+    } else if (action === 'remove-field'){
+      if (!row) return;
+      const fi = parseInt(btn.dataset.fi, 10);
+      row.fields.splice(fi, 1);
+      renderPartsTable();
+      updateHash();
+    }
+  });
+
+  // ---------- optimizer ----------
+  function simulateFill(sortedPieces, capacity, kerf){
+    let used = 0, count = 0;
+    const usedIdx = [];
+    for (let i=0;i<sortedPieces.length;i++){
+      const p = sortedPieces[i];
+      const needed = p.length + (count > 0 ? kerf : 0);
+      if (used + needed <= capacity + 1e-9){
+        used += needed;
+        count++;
+        usedIdx.push(i);
+      }
+    }
+    return { used, count, usedIdx };
+  }
+
+  function scoreOf(sim, stockType){
+    const fillFrac = sim.used / stockType.length;
+    const valuePerDollar = stockType.price > 0 ? sim.used / stockType.price : Infinity;
+    return { valuePerDollar, fillFrac };
+  }
+
+  function isBetter(candScore, cand, bestScore, best){
+    if (Math.abs(candScore.valuePerDollar - bestScore.valuePerDollar) > 1e-9){
+      return candScore.valuePerDollar > bestScore.valuePerDollar;
+    }
+    if (Math.abs(candScore.fillFrac - bestScore.fillFrac) > 1e-9){
+      return candScore.fillFrac > bestScore.fillFrac;
+    }
+    return cand.price < best.price;
+  }
+
+  function optimize(piecesIn, stockTypes, kerf){
+    let remaining = piecesIn.slice().sort((a,b) => b.length - a.length);
+    const bins = [];
+    const unplaceable = [];
+    const unplaceableOutOfStock = [];
+
+    const availability = new Map(stockTypes.map(s => [s.id, (s.qty === Infinity || s.qty == null) ? Infinity : s.qty]));
+
+    while (remaining.length > 0){
+      const piece = remaining.shift();
+
+      let bestBinIdx = -1, bestLeftover = Infinity;
+      for (let i=0;i<bins.length;i++){
+        const b = bins[i];
+        const kerfCost = b.pieces.length > 0 ? kerf : 0;
+        const needed = piece.length + kerfCost;
+        const capLeft = b.stockType.length - b.used;
+        const leftoverAfter = capLeft - needed;
+        if (leftoverAfter >= -1e-9 && leftoverAfter < bestLeftover){
+          bestLeftover = leftoverAfter;
+          bestBinIdx = i;
+        }
+      }
+
+      if (bestBinIdx >= 0){
+        const b = bins[bestBinIdx];
+        const kerfCost = b.pieces.length > 0 ? kerf : 0;
+        b.pieces.push(piece);
+        b.used += piece.length + kerfCost;
+        continue;
+      }
+
+      const candidatesAll = stockTypes.filter(s => s.length >= piece.length - 1e-9);
+      const candidates = candidatesAll.filter(s => (availability.get(s.id) ?? Infinity) > 0);
+
+      if (candidates.length === 0){
+        if (candidatesAll.length === 0){
+          unplaceable.push(piece);
+        } else {
+          unplaceableOutOfStock.push(piece);
+        }
+        continue;
+      }
+
+      const pool = [piece, ...remaining];
+      let best = null, bestSim = null, bestScore = null;
+      for (const s of candidates){
+        const sim = simulateFill(pool, s.length, kerf);
+        const score = scoreOf(sim, s);
+        if (!best || isBetter(score, s, bestScore, best)){
+          best = s; bestSim = sim; bestScore = score;
+        }
+      }
+
+      const usedPieces = bestSim.usedIdx.map(i => pool[i]);
+      const usedIds = new Set(usedPieces.map(p => p.id));
+      remaining = remaining.filter(p => !usedIds.has(p.id));
+      bins.push({ stockType: best, pieces: usedPieces, used: bestSim.used });
+      availability.set(best.id, (availability.get(best.id) ?? Infinity) - 1);
+    }
+
+    return { bins, unplaceable, unplaceableOutOfStock };
+  }
+
+  // ---------- sheet-goods 2D packing (guillotine, best-area-fit) ----------
+  function fitsInSheet(piece, sheetW, sheetH, allowRotate){
+    if (piece.w <= sheetW + 1e-9 && piece.h <= sheetH + 1e-9) return true;
+    if (allowRotate && piece.h <= sheetW + 1e-9 && piece.w <= sheetH + 1e-9) return true;
+    return false;
+  }
+
+  // Find the best free rectangle to place a piece into (best-area-fit).
+  // pw/ph are the piece's TRUE dimensions (no kerf baked in). Kerf is only
+  // charged on an axis where the piece doesn't already fill the free
+  // rectangle exactly — an edge that coincides with the rectangle's own
+  // boundary needs no interior cut, so no blade width is lost there.
+  function chooseFreeRect(freeRects, pw, ph, kerf, allowRotate){
+    let best = null;
+    for (let idx=0; idx<freeRects.length; idx++){
+      const r = freeRects[idx];
+      if (pw <= r.w + 1e-9 && ph <= r.h + 1e-9){
+        const consumedW = Math.min(r.w, (r.w - pw > 1e-6) ? pw + kerf : pw);
+        const consumedH = Math.min(r.h, (r.h - ph > 1e-6) ? ph + kerf : ph);
+        const leftover = r.w * r.h - consumedW * consumedH;
+        if (!best || leftover < best.leftover) best = { idx, placedW: pw, placedH: ph, consumedW, consumedH, rotated: false, leftover };
+      }
+      if (allowRotate && ph <= r.w + 1e-9 && pw <= r.h + 1e-9){
+        const rw = ph, rh = pw;
+        const consumedW = Math.min(r.w, (r.w - rw > 1e-6) ? rw + kerf : rw);
+        const consumedH = Math.min(r.h, (r.h - rh > 1e-6) ? rh + kerf : rh);
+        const leftover = r.w * r.h - consumedW * consumedH;
+        if (!best || leftover < best.leftover) best = { idx, placedW: rw, placedH: rh, consumedW, consumedH, rotated: true, leftover };
+      }
+    }
+    return best;
+  }
+
+  // Guillotine split: cut the used rectangle out of its free rectangle, splitting
+  // along the shorter leftover edge so slivers stay as large and usable as possible.
+  function splitFreeRect(rect, placedW, placedH){
+    const rightW = rect.w - placedW;
+    const bottomH = rect.h - placedH;
+    const out = [];
+    if (rightW > bottomH){
+      // vertical guillotine cut: right piece gets full height, bottom piece is capped to placedW
+      if (rightW > 1e-6) out.push({ x: rect.x + placedW, y: rect.y, w: rightW, h: rect.h });
+      if (bottomH > 1e-6) out.push({ x: rect.x, y: rect.y + placedH, w: placedW, h: bottomH });
+    } else {
+      // horizontal guillotine cut: bottom piece gets full width, right piece is capped to placedH
+      if (bottomH > 1e-6) out.push({ x: rect.x, y: rect.y + placedH, w: rect.w, h: bottomH });
+      if (rightW > 1e-6) out.push({ x: rect.x + placedW, y: rect.y, w: rightW, h: placedH });
+    }
+    return out;
+  }
+
+  // Pack a pre-sorted (area-descending) list of pieces onto one sheet. Returns
+  // everything needed both to score a candidate sheet and to seed a real bin.
+  function packSheet(pieces, sheetW, sheetH, kerf, allowRotate){
+    let freeRects = [{ x: 0, y: 0, w: sheetW, h: sheetH }];
+    const placements = [];
+    const unplaced = [];
+    let usedArea = 0, kerfArea = 0;
+    for (const p of pieces){
+      const choice = chooseFreeRect(freeRects, p.w, p.h, kerf, allowRotate);
+      if (!choice){ unplaced.push(p); continue; }
+      const rect = freeRects[choice.idx];
+      placements.push({ id: p.id, x: rect.x, y: rect.y, w: choice.placedW, h: choice.placedH, rotated: choice.rotated, label: p.label, colorCss: p.colorCss });
+      const newRects = splitFreeRect(rect, choice.consumedW, choice.consumedH);
+      freeRects.splice(choice.idx, 1, ...newRects);
+      usedArea += p.w * p.h;
+      kerfArea += (choice.consumedW * choice.consumedH) - (choice.placedW * choice.placedH);
+    }
+    return { placements, unplaced, usedArea, kerfArea, freeRects };
+  }
+
+  function simulateFillSheet(sortedPieces, sheetW, sheetH, kerf, allowRotate){
+    const packed = packSheet(sortedPieces, sheetW, sheetH, kerf, allowRotate);
+    return { usedArea: packed.usedArea, kerfArea: packed.kerfArea, placements: packed.placements, freeRects: packed.freeRects };
+  }
+
+  function scoreOfSheet(sim, stockType){
+    const sheetArea = stockType.width * stockType.height;
+    const fillFrac = sheetArea > 0 ? sim.usedArea / sheetArea : 0;
+    const valuePerDollar = stockType.price > 0 ? sim.usedArea / stockType.price : Infinity;
+    return { valuePerDollar, fillFrac };
+  }
+
+  function optimizeSheet(piecesIn, stockTypes, kerf, allowRotate){
+    let remaining = piecesIn.slice().sort((a,b) => (b.w*b.h) - (a.w*a.h));
+    const bins = [];
+    const unplaceable = [];
+    const unplaceableOutOfStock = [];
+
+    const availability = new Map(stockTypes.map(s => [s.id, (s.qty === Infinity || s.qty == null) ? Infinity : s.qty]));
+
+    while (remaining.length > 0){
+      const piece = remaining.shift();
+
+      // best-fit across already-open sheets
+      let bestBinIdx = -1, bestChoice = null, bestLeftover = Infinity;
+      for (let i=0;i<bins.length;i++){
+        const choice = chooseFreeRect(bins[i].freeRects, piece.w, piece.h, kerf, allowRotate);
+        if (choice && choice.leftover < bestLeftover){
+          bestLeftover = choice.leftover; bestBinIdx = i; bestChoice = choice;
+        }
+      }
+
+      if (bestBinIdx >= 0){
+        const b = bins[bestBinIdx];
+        const rect = b.freeRects[bestChoice.idx];
+        b.placements.push({ id: piece.id, x: rect.x, y: rect.y, w: bestChoice.placedW, h: bestChoice.placedH, rotated: bestChoice.rotated, label: piece.label, colorCss: piece.colorCss });
+        const newRects = splitFreeRect(rect, bestChoice.consumedW, bestChoice.consumedH);
+        b.freeRects.splice(bestChoice.idx, 1, ...newRects);
+        b.usedArea += piece.w * piece.h;
+        b.kerfArea += (bestChoice.consumedW * bestChoice.consumedH) - (piece.w * piece.h);
+        continue;
+      }
+
+      const candidatesAll = stockTypes.filter(s => fitsInSheet(piece, s.width, s.height, allowRotate));
+      const candidates = candidatesAll.filter(s => (availability.get(s.id) ?? Infinity) > 0);
+
+      if (candidates.length === 0){
+        if (candidatesAll.length === 0){
+          unplaceable.push(piece);
+        } else {
+          unplaceableOutOfStock.push(piece);
+        }
+        continue;
+      }
+
+      const pool = [piece, ...remaining];
+      let best = null, bestSim = null, bestScore = null;
+      for (const s of candidates){
+        const sim = simulateFillSheet(pool, s.width, s.height, kerf, allowRotate);
+        const score = scoreOfSheet(sim, s);
+        if (!best || isBetter(score, s, bestScore, best)){
+          best = s; bestSim = sim; bestScore = score;
+        }
+      }
+
+      const usedIds = new Set(bestSim.placements.map(pl => pl.id));
+      remaining = remaining.filter(p => !usedIds.has(p.id));
+      bins.push({ stockType: best, placements: bestSim.placements, usedArea: bestSim.usedArea, kerfArea: bestSim.kerfArea, freeRects: bestSim.freeRects });
+      availability.set(best.id, (availability.get(best.id) ?? Infinity) - 1);
+    }
+
+    return { bins, unplaceable, unplaceableOutOfStock };
+  }
+
+  // ---------- stock table rendering ----------
+  function renderStockTable(){
+    const wrap = document.getElementById('stockTable');
+    wrap.innerHTML = '';
+    const unitOptions = ['in','ft','mm','cm'];
+    stockRows.forEach((row, idx) => {
+      const div = document.createElement('div');
+      div.className = 'stock-row';
+      div.dataset.rowId = row.id;
+      const rowUnit = row.unit || 'in';
+
+      const dimsHtml = mode === 'sheet' ?
+        '<div class="stock-row-grid3">' +
+          '<div>' +
+            '<span class="mini-label">Width</span>' +
+            '<input type="number" min="0" step="any" data-field="width" value="' + row.width + '" placeholder="48">' +
+          '</div>' +
+          '<div>' +
+            '<span class="mini-label">Height</span>' +
+            '<input type="number" min="0" step="any" data-field="height" value="' + row.height + '" placeholder="96">' +
+          '</div>' +
+          '<div>' +
+            '<span class="mini-label">Unit</span>' +
+            '<select data-field="unit">' +
+              unitOptions.map(o => '<option value="' + o + '"' + (rowUnit === o ? ' selected' : '') + '>' + o + '</option>').join('') +
+            '</select>' +
+          '</div>' +
+        '</div>'
+        :
+        '<div class="stock-row-grid">' +
+          '<div>' +
+            '<span class="mini-label">Length</span>' +
+            '<input type="number" min="0" step="any" data-field="length" value="' + row.length + '" placeholder="96">' +
+          '</div>' +
+          '<div>' +
+            '<span class="mini-label">Unit</span>' +
+            '<select data-field="unit">' +
+              unitOptions.map(o => '<option value="' + o + '"' + (rowUnit === o ? ' selected' : '') + '>' + o + '</option>').join('') +
+            '</select>' +
+          '</div>' +
+        '</div>';
+
+      div.innerHTML =
+        '<div class="stock-row-head">' +
+          '<span class="stock-row-index">Option ' + (idx+1) + '</span>' +
+          '<button class="row-remove" data-action="remove" title="Remove this stock option" ' + (stockRows.length <= 1 ? 'disabled' : '') + '>×</button>' +
+        '</div>' +
+        dimsHtml +
+        '<div class="stock-row-grid2">' +
+          '<div>' +
+            '<span class="mini-label">Qty</span>' +
+            '<input type="number" min="0" step="1" data-field="qty" value="' + row.qty + '" placeholder="∞">' +
+          '</div>' +
+          '<div>' +
+            '<span class="mini-label">Price</span>' +
+            '<input type="number" min="0" step="any" data-field="price" value="' + row.price + '" placeholder="0.00">' +
+          '</div>' +
+        '</div>' +
+        '<div>' +
+          '<span class="mini-label">Label (optional)</span>' +
+          '<input type="text" data-field="label" value="' + (row.label || '').replace(/"/g,'&quot;') + '" placeholder="e.g. 8ft — Acme Metals">' +
+        '</div>';
+      wrap.appendChild(div);
+    });
+  }
+
+  document.getElementById('addStockBtn').addEventListener('click', () => {
+    stockRows.push({ id: nextStockId++, length: '', width: '', height: '', unit: unit(), price: '', qty: '', label: '' });
+    renderStockTable();
+    updateHash();
+  });
+
+  function handleStockFieldChange(e){
+    const rowEl = e.target.closest('[data-row-id]');
+    if (!rowEl) return;
+    const id = parseInt(rowEl.dataset.rowId, 10);
+    const row = stockRows.find(r => r.id === id);
+    if (!row) return;
+    const field = e.target.dataset.field;
+    if (!field) return;
+    row[field] = e.target.value;
+    updateHash();
+  }
+
+  document.getElementById('stockTable').addEventListener('input', handleStockFieldChange);
+  document.getElementById('stockTable').addEventListener('change', handleStockFieldChange);
+
+  document.getElementById('stockTable').addEventListener('click', (e) => {
+    if (e.target.dataset.action === 'remove'){
+      const rowEl = e.target.closest('[data-row-id]');
+      const id = parseInt(rowEl.dataset.rowId, 10);
+      if (stockRows.length > 1){
+        stockRows = stockRows.filter(r => r.id !== id);
+        renderStockTable();
+        updateHash();
+      }
+    }
+  });
+
+  function kerfUnit(){ return document.getElementById('kerfUnitSelect').value; }
+  document.getElementById('unitSelect').addEventListener('change', updateHash);
+  document.getElementById('kerfUnitSelect').addEventListener('change', updateHash);
+  document.getElementById('kerfInput').addEventListener('input', updateHash);
+  document.getElementById('allowRotateInput').addEventListener('change', updateHash);
+
+  // ---------- mode toggle ----------
+  const MODE_COPY = {
+    linear: {
+      cutlistLabel: 'Cut lengths',
+      cutlistPlaceholder: 'Paste a list — one per line. A Grasshopper dump works as-is:\n38\n24\n60.5 x 2',
+      stockHeaderLabel: 'Stock lengths on offer',
+      stockHint: 'Leave quantity blank for unlimited stock at that length. Each row can use its own unit — handy when the yard prices big stock in feet but you\'re cutting in inches.',
+      emptyP1: 'Paste your cut lengths on the left, set a stock length and kerf, then optimize.',
+      emptyP2: 'With more than one stock length listed, the optimizer weighs material use against price and picks the mix that costs least for the full list.',
+      footnote: 'Optimization uses a best-fit-decreasing heuristic: pieces are placed largest-first into whichever open stock piece, or new stock option, uses the most material per dollar. It\'s fast and close to optimal in practice, but the general cutting-stock problem is NP-hard — for very large or unusual lists, a marginally better arrangement may exist. Kerf is charged between pieces sharing a stock piece, not after the last one.'
+    },
+    sheet: {
+      cutlistLabel: 'Part sizes',
+      cutlistPlaceholder: 'Paste a list — one per line, W x H:\n24 x 36\n18 x 24\n30.5 x 40',
+      stockHeaderLabel: 'Stock sheets on offer',
+      stockHint: 'Leave quantity blank for unlimited stock at that size. Each row can use its own unit.',
+      emptyP1: 'Paste your part sizes on the left, set a sheet size and kerf, then optimize.',
+      emptyP2: 'With more than one sheet size listed, the optimizer weighs material use against price and picks the mix that costs least for the full list.',
+      footnote: 'Optimization nests parts onto sheets with a best-area-fit guillotine heuristic: parts are placed largest-area-first into whichever open sheet, or new sheet option, uses the most material per dollar, splitting each remaining free rectangle along its shorter leftover edge. It\'s fast and close to optimal in practice, but 2D cutting-stock (nesting) is NP-hard — for very large or unusual part lists, a marginally better arrangement may exist. Kerf is applied as a margin around each part, so totals are a close approximation rather than an exact model of a specific cut sequence.'
+    }
+  };
+
+  function applyModeCopy(){
+    const c = MODE_COPY[mode];
+    document.getElementById('cutlistLabel').textContent = c.cutlistLabel;
+    document.getElementById('partsBulk').placeholder = c.cutlistPlaceholder;
+    document.getElementById('stockHeaderLabel').textContent = c.stockHeaderLabel;
+    document.getElementById('stockHint').textContent = c.stockHint;
+    document.getElementById('emptyStateP1').textContent = c.emptyP1;
+    document.getElementById('emptyStateP2').textContent = c.emptyP2;
+    document.getElementById('footnoteText').textContent = c.footnote;
+    document.getElementById('addStockBtn').textContent = mode === 'sheet' ? '+ Add sheet size' : '+ Add length';
+    document.getElementById('rotateGroup').hidden = (mode !== 'sheet');
+  }
+
+  function setMode(newMode, opts){
+    opts = opts || {};
+    mode = newMode;
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    applyModeCopy();
+    if (!opts.silent){
+      // linear lengths and sheet sizes aren't interchangeable — start clean
+      partRows = [ { id: 1, value: '', qty: 1, fields: [], color: '' } ];
+      nextPartId = 2;
+      document.getElementById('partsBulk').value = '';
+      document.getElementById('parseHint').textContent = '';
+    }
+    renderStockTable();
+    renderPartsTable();
+    refreshColMap();
+    if (!opts.silent) updateHash();
+  }
+
+  document.getElementById('modeToggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('.mode-btn');
+    if (!btn) return;
+    setMode(btn.dataset.mode);
+  });
+
+  // ---------- shareable URL state ----------
+  function serializeState(){
+    return {
+      m: mode,
+      rot: document.getElementById('allowRotateInput').checked,
+      p: partRows.map(r => [r.value, r.qty, (r.fields || []).map(f => [f.name || '', f.value || '']), r.color || '']),
+      k: document.getElementById('kerfInput').value,
+      ku: document.getElementById('kerfUnitSelect').value,
+      u: document.getElementById('unitSelect').value,
+      s: stockRows.map(r => [r.length, r.price, r.label, r.unit, r.qty, r.width, r.height])
+    };
+  }
+
+  function updateHash(){
+    try {
+      const encoded = encodeURIComponent(JSON.stringify(serializeState()));
+      history.replaceState(null, '', '#' + encoded);
+    } catch(e){ /* ignore — non-navigable context */ }
+  }
+
+  function restoreFromHash(){
+    if (!location.hash || location.hash.length < 2) return false;
+    try {
+      const state = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+      // set mode up front so any legacy-text parse below runs in the right mode
+      mode = state.m === 'sheet' ? 'sheet' : 'linear';
+      document.getElementById('kerfInput').value = (state.k !== undefined && state.k !== '') ? state.k : '0.125';
+      document.getElementById('kerfUnitSelect').value = (state.ku === 'mm') ? 'mm' : 'in';
+      document.getElementById('unitSelect').value = state.u || 'in';
+      document.getElementById('allowRotateInput').checked = state.rot !== false;
+
+      if (Array.isArray(state.p) && state.p.length){
+        partRows = state.p.map((row, i) => {
+          let fields = [];
+          if (Array.isArray(row[2])) fields = row[2].map(f => Array.isArray(f) ? { name: f[0] || '', value: f[1] || '' } : { name: '', value: String(f || '') });
+          else if (typeof row[2] === 'string' && row[2].trim()) fields = [ { name: '', value: row[2] } ]; // legacy single-label links
+          return {
+            id: i+1,
+            value: row[0] || '',
+            qty: (row[1] !== undefined && row[1] !== '' && parseInt(row[1],10) > 0) ? parseInt(row[1],10) : 1,
+            fields: fields,
+            color: (typeof row[3] === 'string') ? row[3] : ''
+          };
+        });
+        nextPartId = partRows.length + 1;
+      } else if (typeof state.c === 'string' && state.c.trim()){
+        // legacy links stored the raw textarea — fold it into rows
+        const parsed = mode === 'sheet' ? parseSheetList(state.c) : parseCutlist(state.c);
+        const order = [], map = new Map();
+        parsed.pieces.forEach(pc => {
+          const value = mode === 'sheet' ? (fmt(pc.w) + ' x ' + fmt(pc.h)) : fmt(pc.length);
+          const key = normKey(value);
+          if (!map.has(key)){ map.set(key, { value, qty: 1 }); order.push(key); }
+          else { map.get(key).qty += 1; }
+        });
+        partRows = order.map((k, i) => ({ id: i+1, value: map.get(k).value, fields: [], qty: map.get(k).qty, color: '' }));
+        if (!partRows.length) partRows = [ { id: 1, value: '', qty: 1, fields: [], color: '' } ];
+        nextPartId = partRows.length + 1;
+      }
+      if (Array.isArray(state.s) && state.s.length){
+        stockRows = state.s.map((row, i) => ({
+          id: i+1,
+          length: row[0] || '',
+          price: row[1] || '',
+          label: row[2] || '',
+          unit: row[3] || 'in',
+          qty: row[4] || '',
+          width: row[5] || '',
+          height: row[6] || ''
+        }));
+        nextStockId = stockRows.length + 1;
+      }
+      setMode(state.m === 'sheet' ? 'sheet' : 'linear', { silent: true });
+      return true;
+    } catch(e){
+      return false;
+    }
+  }
+
+  document.getElementById('shareLinkBtn').addEventListener('click', () => {
+    updateHash();
+    const btn = document.getElementById('shareLinkBtn');
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      btn.textContent = 'Link copied ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy link to this cutlist'; btn.classList.remove('copied'); }, 1800);
+    }).catch(() => {
+      btn.textContent = 'Couldn\'t copy — select address bar';
+      setTimeout(() => { btn.textContent = 'Copy link to this cutlist'; }, 2200);
+    });
+  });
+
+  // ---------- run ----------
+  document.getElementById('optimizeBtn').addEventListener('click', runOptimizer);
+
+  function runOptimizer(){
+    if (mode === 'sheet') { runSheetOptimizer(); return; }
+
+    const errorArea = document.getElementById('errorArea');
+    errorArea.innerHTML = '';
+
+    const { pieces, warnings } = collectParts();
+
+    const parseHint = document.getElementById('parseHint');
+    if (warnings.length){
+      parseHint.className = 'hint warn';
+      parseHint.textContent = warnings.join(' ');
+    } else {
+      parseHint.className = 'hint';
+      parseHint.textContent = pieces.length ? (pieces.length + ' piece' + (pieces.length===1?'':'s') + ' read.') : '';
+    }
+
+    if (pieces.length === 0){
+      showError('No cut lengths to work with. Paste a list or add at least one part on the left.');
+      return;
+    }
+
+    const cutUnit = unit();
+    const kerfVal = parseFloat(document.getElementById('kerfInput').value);
+    const kerfDisplay = isFinite(kerfVal) && kerfVal >= 0 ? kerfVal : 0;
+    const kerfBase = toBase(kerfDisplay, kerfUnit());
+
+    const piecesBase = pieces.map(p => ({ id: p.id, length: toBase(p.length, cutUnit), label: p.label, colorCss: p.colorCss }));
+
+    const stockTypes = stockRows
+      .map(r => {
+        const lenOrig = parseFloat(r.length);
+        const qtyNum = parseInt(r.qty, 10);
+        const qty = (r.qty === '' || r.qty === undefined || r.qty === null || !isFinite(qtyNum)) ? Infinity : qtyNum;
+        return {
+          id: r.id,
+          length: toBase(lenOrig, r.unit || 'in'),
+          origLength: lenOrig,
+          unit: r.unit || 'in',
+          price: parseFloat(r.price) || 0,
+          qty: qty,
+          label: (r.label || '').trim()
+        };
+      })
+      .filter(s => isFinite(s.length) && s.length > 0)
+      .filter(s => s.qty === Infinity || s.qty > 0);
+
+    if (stockTypes.length === 0){
+      showError('Add at least one stock length before optimizing (with a quantity greater than zero, if set).');
+      return;
+    }
+
+    const result = optimize(piecesBase, stockTypes, kerfBase);
+    lastResult = { mode: 'linear', result, kerfBase, cutUnit, kerfUnitVal: kerfUnit(), totalParts: pieces.length };
+
+    const msgs = [];
+    if (result.unplaceable.length){
+      const lens = result.unplaceable.map(p => fmt(fromBase(p.length, cutUnit))).sort((a,b)=>b-a);
+      msgs.push('These lengths are longer than every stock option and were left out: ' + lens.join(', ') + ' ' + cutUnit + '. Add a longer stock length or split the cut.');
+    }
+    if (result.unplaceableOutOfStock.length){
+      const lens2 = result.unplaceableOutOfStock.map(p => fmt(fromBase(p.length, cutUnit))).sort((a,b)=>b-a);
+      msgs.push('These lengths ran out of matching stock — quantity limits were reached — and were left out: ' + lens2.join(', ') + ' ' + cutUnit + '. Add more quantity, or another stock length, to cover them.');
+    }
+    if (msgs.length) showError(msgs.join(' '));
+
+    renderResults(result, kerfBase, cutUnit);
+  }
+
+  function runSheetOptimizer(){
+    const errorArea = document.getElementById('errorArea');
+    errorArea.innerHTML = '';
+
+    const { pieces, warnings } = collectParts();
+
+    const parseHint = document.getElementById('parseHint');
+    if (warnings.length){
+      parseHint.className = 'hint warn';
+      parseHint.textContent = warnings.join(' ');
+    } else {
+      parseHint.className = 'hint';
+      parseHint.textContent = pieces.length ? (pieces.length + ' part' + (pieces.length===1?'':'s') + ' read.') : '';
+    }
+
+    if (pieces.length === 0){
+      showError('No part sizes to work with. Paste a list or add at least one "W x H" on the left.');
+      return;
+    }
+
+    const cutUnit = unit();
+    const kerfVal = parseFloat(document.getElementById('kerfInput').value);
+    const kerfDisplay = isFinite(kerfVal) && kerfVal >= 0 ? kerfVal : 0;
+    const kerfBase = toBase(kerfDisplay, kerfUnit());
+    const allowRotate = document.getElementById('allowRotateInput').checked;
+
+    const piecesBase = pieces.map(p => ({ id: p.id, w: toBase(p.w, cutUnit), h: toBase(p.h, cutUnit), label: p.label, colorCss: p.colorCss }));
+
+    const stockTypes = stockRows
+      .map(r => {
+        const wOrig = parseFloat(r.width);
+        const hOrig = parseFloat(r.height);
+        const qtyNum = parseInt(r.qty, 10);
+        const qty = (r.qty === '' || r.qty === undefined || r.qty === null || !isFinite(qtyNum)) ? Infinity : qtyNum;
+        return {
+          id: r.id,
+          width: toBase(wOrig, r.unit || 'in'),
+          height: toBase(hOrig, r.unit || 'in'),
+          origWidth: wOrig,
+          origHeight: hOrig,
+          unit: r.unit || 'in',
+          price: parseFloat(r.price) || 0,
+          qty: qty,
+          label: (r.label || '').trim()
+        };
+      })
+      .filter(s => isFinite(s.width) && s.width > 0 && isFinite(s.height) && s.height > 0)
+      .filter(s => s.qty === Infinity || s.qty > 0);
+
+    if (stockTypes.length === 0){
+      showError('Add at least one sheet size before optimizing (with a quantity greater than zero, if set).');
+      return;
+    }
+
+    const result = optimizeSheet(piecesBase, stockTypes, kerfBase, allowRotate);
+    lastResult = { mode: 'sheet', result, kerfBase, cutUnit, allowRotate, kerfUnitVal: kerfUnit(), totalParts: pieces.length };
+
+    const msgs = [];
+    if (result.unplaceable.length){
+      const dims = result.unplaceable.map(p => fmt(fromBase(p.w, cutUnit)) + ' x ' + fmt(fromBase(p.h, cutUnit))).sort();
+      msgs.push('These parts are larger than every sheet option (even with rotation) and were left out: ' + dims.join(', ') + ' ' + cutUnit + '. Add a larger sheet size or split the part.');
+    }
+    if (result.unplaceableOutOfStock.length){
+      const dims2 = result.unplaceableOutOfStock.map(p => fmt(fromBase(p.w, cutUnit)) + ' x ' + fmt(fromBase(p.h, cutUnit))).sort();
+      msgs.push('These parts ran out of matching sheet stock — quantity limits were reached — and were left out: ' + dims2.join(', ') + ' ' + cutUnit + '. Add more quantity, or another sheet size, to cover them.');
+    }
+    if (msgs.length) showError(msgs.join(' '));
+
+    renderSheetResults(result, kerfBase, cutUnit);
+  }
+
+  function showError(msg){
+    const errorArea = document.getElementById('errorArea');
+    const box = document.createElement('div');
+    box.className = 'error-box';
+    box.innerHTML = '<strong>Heads up</strong>' + msg;
+    errorArea.appendChild(box);
+    document.getElementById('emptyState').hidden = true;
+    document.getElementById('resultsContent').hidden = false;
+    document.getElementById('runMeta').textContent = '';
+    document.getElementById('statRow').innerHTML = '';
+    document.getElementById('purchaseTable').innerHTML = '';
+    document.getElementById('binsWrap').innerHTML = '';
+    document.getElementById('legendRow').innerHTML = '';
+    document.getElementById('remnantsWrap').innerHTML = '';
+    document.getElementById('remnantsTitle').style.display = 'none';
+    document.getElementById('copyBtn').style.display = 'none';
+    document.getElementById('csvBtn').style.display = 'none';
+    document.getElementById('printBtn').style.display = 'none';
+    document.getElementById('printLabelsBtn').style.display = 'none';
+  }
+
+  function renderResults(result, kerfBase, cutUnit){
+    document.getElementById('emptyState').hidden = true;
+    document.getElementById('resultsContent').hidden = false;
+    document.getElementById('copyBtn').style.display = '';
+    document.getElementById('csvBtn').style.display = '';
+    document.getElementById('printBtn').style.display = '';
+    document.getElementById('printLabelsBtn').style.display = '';
+
+    const bins = result.bins;
+
+    document.getElementById('runMeta').textContent =
+      'Kerf ' + fmt(fromBase(kerfBase, lastResult.kerfUnitVal)) + ' ' + lastResult.kerfUnitVal + ' · cutlist unit ' + cutUnit + ' · generated ' + new Date().toLocaleString();
+
+    // ---- aggregate stats (computed in base inches, displayed in the cutlist unit) ----
+    let totalCost = 0, totalUsedBase = 0, totalPurchasedBase = 0, kerfLossBase = 0, remnantBase = 0;
+    const byType = new Map();
+
+    bins.forEach(b => {
+      totalCost += b.stockType.price;
+      totalUsedBase += b.used;
+      totalPurchasedBase += b.stockType.length;
+      const gaps = Math.max(0, b.pieces.length - 1);
+      kerfLossBase += gaps * kerfBase;
+      remnantBase += (b.stockType.length - b.used);
+
+      const key = b.stockType.id;
+      if (!byType.has(key)) byType.set(key, { stockType: b.stockType, count: 0 });
+      byType.get(key).count++;
+    });
+
+    const utilizationPct = totalPurchasedBase > 0 ? (totalUsedBase - kerfLossBase) / totalPurchasedBase * 100 : 0;
+
+    const statRow = document.getElementById('statRow');
+    statRow.innerHTML =
+      statCard('Parts', lastResult.totalParts.toString(), 'pieces to cut', 'accent') +
+      statCard('Stock to buy', bins.length.toString(), 'pieces total', 'accent') +
+      statCard('Total cost', fmtMoney(totalCost), byType.size + ' stock type' + (byType.size===1?'':'s'), '') +
+      statCard('Material used', utilizationPct.toFixed(1) + '%', 'of stock purchased', '') +
+      statCard('Remnant', fmt(fromBase(remnantBase, cutUnit)) + ' ' + cutUnit, 'reusable offcut', '') +
+      statCard('Kerf loss', fmt(fromBase(kerfLossBase, cutUnit)) + ' ' + cutUnit, 'consumed by the blade', 'warn');
+
+    // ---- purchase table ----
+    const purchaseTable = document.getElementById('purchaseTable');
+    let rows = '<tr><th>Stock</th><th>Length</th><th>Qty used</th><th>Unit price</th><th>Subtotal</th></tr>';
+    const sortedTypes = Array.from(byType.values()).sort((a,b) => b.stockType.length - a.stockType.length);
+    sortedTypes.forEach(entry => {
+      const st = entry.stockType;
+      const lengthDisp = fmt(st.origLength) + ' ' + st.unit;
+      const label = st.label || lengthDisp;
+      const subtotal = entry.count * st.price;
+      const qtyNote = isFinite(st.qty) ? ' / ' + st.qty + (entry.count >= st.qty ? ' (all used)' : ' avail.') : '';
+      rows += '<tr>' +
+        '<td>' + escapeHtml(label) + '</td>' +
+        '<td>' + lengthDisp + '</td>' +
+        '<td>' + entry.count + qtyNote + '</td>' +
+        '<td>' + fmtMoney(st.price) + '</td>' +
+        '<td>' + fmtMoney(subtotal) + '</td>' +
+        '</tr>';
+    });
+    rows += '<tr><td colspan="4" style="text-align:right;font-family:var(--font-display);font-weight:600;">Total</td><td style="font-family:var(--font-display);font-weight:600;">' + fmtMoney(totalCost) + '</td></tr>';
+    purchaseTable.innerHTML = rows;
+
+    // ---- colors + compact key (no per-size list — it's just noise) ----
+    const uniqueLengths = Array.from(new Set(bins.flatMap(b => b.pieces.map(p => fmt(fromBase(p.length, cutUnit)))))).sort((a,b)=>b-a);
+    assignColors(uniqueLengths);
+    document.getElementById('legendRow').innerHTML =
+      '<span class="legend-item"><span class="legend-swatch kerf"></span>kerf</span>' +
+      '<span class="legend-item"><span class="legend-swatch remnant"></span>remnant</span>';
+
+    // ---- bin diagrams ----
+    const binsWrap = document.getElementById('binsWrap');
+    binsWrap.innerHTML = '';
+    bins.forEach((b, i) => {
+      binsWrap.appendChild(renderBinCard(b, i, kerfBase, cutUnit));
+    });
+
+    renderRemnants();
+  }
+
+  function statCard(label, value, sub, cls){
+    return '<div class="stat-card">' +
+      '<div class="stat-label">' + label + '</div>' +
+      '<div class="stat-value ' + (cls||'') + '">' + value + '</div>' +
+      '<div class="stat-sub">' + sub + '</div>' +
+    '</div>';
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderBinCard(bin, index, kerfBase, cutUnit){
+    const card = document.createElement('div');
+    card.className = 'bin-card';
+
+    const st = bin.stockType;
+    const fillPct = (bin.used / st.length) * 100;
+    const remnantBase = st.length - bin.used;
+    const stockLenDisp = fmt(st.origLength) + ' ' + st.unit;
+    const label = st.label || stockLenDisp;
+
+    const head = document.createElement('div');
+    head.className = 'bin-card-head';
+    head.innerHTML =
+      '<span class="bin-index">STOCK ' + String(index+1).padStart(2,'0') + '</span>' +
+      '<span class="bin-type">' + escapeHtml(label) + ' · ' + stockLenDisp + (st.price ? ' · ' + fmtMoney(st.price) : '') + '</span>' +
+      '<span class="bin-fill' + (fillPct < 60 ? ' low' : '') + '">' + fillPct.toFixed(1) + '% used</span>';
+    card.appendChild(head);
+
+    const bar = document.createElement('div');
+    bar.className = 'bin-bar';
+    bin.pieces.forEach((p, i) => {
+      if (i > 0){
+        const kerfEl = document.createElement('div');
+        kerfEl.className = 'kerf-mark';
+        const kerfPct = (kerfBase / st.length) * 100;
+        kerfEl.style.width = kerfPct + '%';
+        kerfEl.title = 'Kerf: ' + fmt(fromBase(kerfBase, lastResult.kerfUnitVal)) + ' ' + lastResult.kerfUnitVal;
+        bar.appendChild(kerfEl);
+      }
+      const seg = document.createElement('div');
+      seg.className = 'segment';
+      const widthPct = (p.length / st.length) * 100;
+      const dispLen = fmt(fromBase(p.length, cutUnit));
+      seg.style.width = widthPct + '%';
+      seg.style.background = colorFor(dispLen);
+      seg.title = (p.label ? p.label + ' — ' : '') + dispLen + ' ' + cutUnit;
+      if (widthPct > 6) seg.textContent = dispLen;
+      bar.appendChild(seg);
+    });
+    if (remnantBase > 1e-6){
+      const rem = document.createElement('div');
+      rem.className = 'remnant-seg';
+      const remPct = (remnantBase / st.length) * 100;
+      const remDisp = fmt(fromBase(remnantBase, cutUnit));
+      rem.style.width = remPct + '%';
+      rem.title = 'Remnant: ' + remDisp + ' ' + cutUnit;
+      if (remPct > 8) rem.textContent = remDisp;
+      bar.appendChild(rem);
+    }
+    card.appendChild(bar);
+
+    const table = document.createElement('table');
+    table.className = 'cut-order-table';
+    let runningBase = 0;
+    let bodyRows = '';
+    const anyLabel = bin.pieces.some(p => p.label);
+    bin.pieces.forEach((p, i) => {
+      if (i > 0) runningBase += kerfBase;
+      runningBase += p.length;
+      bodyRows += '<tr>' +
+        '<td>' + (i+1) + '</td>' +
+        (anyLabel ? '<td>' + escapeHtml(p.label || '') + '</td>' : '') +
+        '<td>' + fmt(fromBase(p.length, cutUnit)) + ' ' + cutUnit + '</td>' +
+        '<td>' + fmt(fromBase(runningBase, cutUnit)) + ' ' + cutUnit + '</td>' +
+        '</tr>';
+    });
+    table.innerHTML = '<tr><th>Cut</th>' + (anyLabel ? '<th>Label</th>' : '') + '<th>Length</th><th>Mark at</th></tr>' + bodyRows;
+    card.appendChild(table);
+
+    return card;
+  }
+
+  // ---------- sheet-goods results rendering ----------
+  function renderSheetResults(result, kerfBase, cutUnit){
+    document.getElementById('emptyState').hidden = true;
+    document.getElementById('resultsContent').hidden = false;
+    document.getElementById('copyBtn').style.display = '';
+    document.getElementById('csvBtn').style.display = '';
+    document.getElementById('printBtn').style.display = '';
+    document.getElementById('printLabelsBtn').style.display = '';
+
+    const bins = result.bins;
+    const allowRotate = document.getElementById('allowRotateInput').checked;
+
+    document.getElementById('runMeta').textContent =
+      'Kerf ' + fmt(fromBase(kerfBase, lastResult.kerfUnitVal)) + ' ' + lastResult.kerfUnitVal + ' · rotation ' + (allowRotate ? 'allowed' : 'off') + ' · generated ' + new Date().toLocaleString();
+
+    let totalCost = 0, totalUsedAreaBase = 0, totalPurchasedAreaBase = 0, kerfAreaBase = 0, remnantAreaBase = 0;
+    const byType = new Map();
+
+    bins.forEach(b => {
+      const st = b.stockType;
+      const sheetArea = st.width * st.height;
+      totalCost += st.price;
+      totalUsedAreaBase += b.usedArea;
+      totalPurchasedAreaBase += sheetArea;
+      kerfAreaBase += b.kerfArea;
+      remnantAreaBase += (sheetArea - b.usedArea - b.kerfArea);
+
+      const key = st.id;
+      if (!byType.has(key)) byType.set(key, { stockType: st, count: 0 });
+      byType.get(key).count++;
+    });
+
+    const utilizationPct = totalPurchasedAreaBase > 0 ? totalUsedAreaBase / totalPurchasedAreaBase * 100 : 0;
+    const areaUnitLabel = cutUnit + '\u00B2';
+    const unitFactor = UNIT_TO_IN[cutUnit] || 1;
+    const fmtArea = (areaBase) => fmt(areaBase / (unitFactor * unitFactor));
+
+    const statRow = document.getElementById('statRow');
+    statRow.innerHTML =
+      statCard('Parts', lastResult.totalParts.toString(), 'parts to cut', 'accent') +
+      statCard('Sheets to buy', bins.length.toString(), 'sheets total', 'accent') +
+      statCard('Total cost', fmtMoney(totalCost), byType.size + ' sheet type' + (byType.size===1?'':'s'), '') +
+      statCard('Material used', utilizationPct.toFixed(1) + '%', 'of sheet area purchased', '') +
+      statCard('Remnant', fmtArea(remnantAreaBase) + ' ' + areaUnitLabel, 'reusable offcut area', '') +
+      statCard('Kerf loss (approx.)', fmtArea(kerfAreaBase) + ' ' + areaUnitLabel, 'consumed by the blade', 'warn');
+
+    const purchaseTable = document.getElementById('purchaseTable');
+    let rows = '<tr><th>Stock</th><th>Size</th><th>Qty used</th><th>Unit price</th><th>Subtotal</th></tr>';
+    const sortedTypes = Array.from(byType.values()).sort((a,b) => (b.stockType.width*b.stockType.height) - (a.stockType.width*a.stockType.height));
+    sortedTypes.forEach(entry => {
+      const st = entry.stockType;
+      const sizeDisp = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+      const label = st.label || sizeDisp;
+      const subtotal = entry.count * st.price;
+      const qtyNote = isFinite(st.qty) ? ' / ' + st.qty + (entry.count >= st.qty ? ' (all used)' : ' avail.') : '';
+      rows += '<tr>' +
+        '<td>' + escapeHtml(label) + '</td>' +
+        '<td>' + sizeDisp + '</td>' +
+        '<td>' + entry.count + qtyNote + '</td>' +
+        '<td>' + fmtMoney(st.price) + '</td>' +
+        '<td>' + fmtMoney(subtotal) + '</td>' +
+        '</tr>';
+    });
+    rows += '<tr><td colspan="4" style="text-align:right;font-family:var(--font-display);font-weight:600;">Total</td><td style="font-family:var(--font-display);font-weight:600;">' + fmtMoney(totalCost) + '</td></tr>';
+    purchaseTable.innerHTML = rows;
+
+    const uniqueDims = Array.from(new Set(bins.flatMap(b => b.placements.map(p => dimKeyOf(p.w, p.h, cutUnit)))))
+      .sort((a, b) => {
+        const pa = a.split(' x ').map(Number), pb = b.split(' x ').map(Number);
+        return (pb[0]*pb[1]) - (pa[0]*pa[1]);
+      });
+    assignColors(uniqueDims);
+    document.getElementById('legendRow').innerHTML =
+      '<span class="legend-item"><span class="legend-swatch remnant"></span>remnant / kerf margin</span>';
+
+    const binsWrap = document.getElementById('binsWrap');
+    binsWrap.innerHTML = '';
+    bins.forEach((b, i) => {
+      binsWrap.appendChild(renderSheetBinCard(b, i, cutUnit));
+    });
+
+    renderRemnants();
+  }
+
+  function renderSheetBinCard(bin, index, cutUnit){
+    const card = document.createElement('div');
+    card.className = 'bin-card';
+
+    const st = bin.stockType;
+    const sheetArea = st.width * st.height;
+    const fillPct = sheetArea > 0 ? (bin.usedArea / sheetArea) * 100 : 0;
+    const sizeDisp = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+    const label = st.label || sizeDisp;
+
+    const head = document.createElement('div');
+    head.className = 'bin-card-head';
+    head.innerHTML =
+      '<span class="bin-index">SHEET ' + String(index+1).padStart(2,'0') + '</span>' +
+      '<span class="bin-type">' + escapeHtml(label) + ' · ' + sizeDisp + (st.price ? ' · ' + fmtMoney(st.price) : '') + '</span>' +
+      '<span class="bin-fill' + (fillPct < 60 ? ' low' : '') + '">' + fillPct.toFixed(1) + '% used</span>';
+    card.appendChild(head);
+
+    // SVG nesting diagram, viewBox matched to sheet aspect ratio
+    const VBW = 1000;
+    const VBH = st.width > 0 ? Math.round(VBW * (st.height / st.width)) : VBW;
+    const wrap = document.createElement('div');
+    wrap.className = 'sheet-svg-wrap';
+    let svg = '<svg viewBox="0 0 ' + VBW + ' ' + VBH + '" xmlns="http://www.w3.org/2000/svg">';
+    svg += '<rect x="0" y="0" width="' + VBW + '" height="' + VBH + '" class="sheet-remnant-rect"/>';
+    const sx = VBW / st.width, sy = VBH / st.height;
+    bin.placements.forEach(p => {
+      const rx = p.x * sx, ry = p.y * sy, rw = p.w * sx, rh = p.h * sy;
+      const dw = fmt(fromBase(p.w, cutUnit)), dh = fmt(fromBase(p.h, cutUnit));
+      const titleTxt = (p.label ? p.label + ' — ' : '') + dw + ' x ' + dh + ' ' + cutUnit + (p.rotated ? ' (rotated)' : '');
+      svg += '<rect class="sheet-piece-rect" x="' + rx.toFixed(2) + '" y="' + ry.toFixed(2) + '" width="' + rw.toFixed(2) + '" height="' + rh.toFixed(2) + '" fill="' + colorFor(dimKeyOf(p.w, p.h, cutUnit)) + '"><title>' + escapeHtml(titleTxt) + '</title></rect>';
+      const minSide = Math.min(rw, rh);
+      if (minSide > 34){
+        const fontSize = Math.max(9, Math.min(15, minSide / 4));
+        const glyph = p.label ? escapeHtml(p.label) : (dw + ' x ' + dh);
+        svg += '<text class="sheet-piece-label" x="' + (rx+rw/2).toFixed(2) + '" y="' + (ry+rh/2).toFixed(2) + '" font-size="' + fontSize.toFixed(1) + '">' + glyph + '</text>';
+      }
+    });
+    svg += '</svg>';
+    wrap.innerHTML = svg;
+    card.appendChild(wrap);
+
+    // cut list table for this sheet
+    const table = document.createElement('table');
+    table.className = 'cut-order-table';
+    let bodyRows = '';
+    const anyLabel = bin.placements.some(p => p.label);
+    bin.placements
+      .slice()
+      .sort((a,b) => (b.w*b.h) - (a.w*a.h))
+      .forEach((p, i) => {
+        const dw = fmt(fromBase(p.w, cutUnit)), dh = fmt(fromBase(p.h, cutUnit));
+        bodyRows += '<tr>' +
+          '<td>' + (i+1) + '</td>' +
+          (anyLabel ? '<td>' + escapeHtml(p.label || '') + '</td>' : '') +
+          '<td>' + dw + ' x ' + dh + ' ' + cutUnit + '</td>' +
+          '<td>' + (p.rotated ? 'Yes' : 'No') + '</td>' +
+          '</tr>';
+      });
+    table.innerHTML = '<tr><th>Part</th>' + (anyLabel ? '<th>Label</th>' : '') + '<th>Size</th><th>Rotated</th></tr>' + bodyRows;
+    card.appendChild(table);
+
+    return card;
+  }
+
+  // ---------- copy plan ----------
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    if (!lastResult) return;
+    let text;
+    if (lastResult.mode === 'sheet'){
+      const { result, cutUnit } = lastResult;
+      text = 'CUTLIST OPTIMIZER — SHEET NESTING PLAN\n';
+      text += '='.repeat(40) + '\n\n';
+      result.bins.forEach((b, i) => {
+        const st = b.stockType;
+        const sizeDisp = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+        const label = st.label || sizeDisp;
+        text += 'SHEET ' + (i+1) + ' — ' + label + ' (' + sizeDisp + ')\n';
+        b.placements.slice().sort((a,b2) => (b2.w*b2.h)-(a.w*a.h)).forEach((p, j) => {
+          const dw = fmt(fromBase(p.w, cutUnit)), dh = fmt(fromBase(p.h, cutUnit));
+          text += '  Part ' + (j+1) + ': ' + (p.label ? p.label + ' — ' : '') + dw + ' x ' + dh + ' ' + cutUnit + ' at (' + fmt(fromBase(p.x, cutUnit)) + ', ' + fmt(fromBase(p.y, cutUnit)) + ')' + (p.rotated ? ' [rotated]' : '') + '\n';
+        });
+        const sheetArea = st.width * st.height;
+        const remnantBase = sheetArea - b.usedArea - b.kerfArea;
+        const unitFactor = UNIT_TO_IN[cutUnit] || 1;
+        text += '  Remnant: ~' + fmt(remnantBase / (unitFactor*unitFactor)) + ' ' + cutUnit + '\u00B2\n\n';
+      });
+    } else {
+      const { result, kerfBase, cutUnit } = lastResult;
+      text = 'CUTLIST OPTIMIZER — CUT PLAN\n';
+      text += '='.repeat(40) + '\n\n';
+      result.bins.forEach((b, i) => {
+        const st = b.stockType;
+        const stockLenDisp = fmt(st.origLength) + ' ' + st.unit;
+        const label = st.label || stockLenDisp;
+        text += 'STOCK ' + (i+1) + ' — ' + label + ' (' + stockLenDisp + ')\n';
+        let runningBase = 0;
+        b.pieces.forEach((p, j) => {
+          if (j > 0) runningBase += kerfBase;
+          runningBase += p.length;
+          text += '  Cut ' + (j+1) + ': ' + (p.label ? p.label + ' — ' : '') + fmt(fromBase(p.length, cutUnit)) + ' ' + cutUnit + '  (mark at ' + fmt(fromBase(runningBase, cutUnit)) + ' ' + cutUnit + ')\n';
+        });
+        const remnantBase = st.length - b.used;
+        text += '  Remnant: ' + fmt(fromBase(remnantBase, cutUnit)) + ' ' + cutUnit + '\n\n';
+      });
+    }
+    const btn = document.getElementById('copyBtn');
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy cut plan as text'; btn.classList.remove('copied'); }, 1800);
+    }).catch(() => {
+      btn.textContent = 'Couldn\'t copy — select manually';
+      setTimeout(() => { btn.textContent = 'Copy cut plan as text'; }, 2200);
+    });
+  });
+
+  // ---------- print ----------
+  document.getElementById('printBtn').addEventListener('click', () => {
+    window.print();
+  });
+
+  // ---------- remnants summary (all offcuts together) ----------
+  function renderRemnants(){
+    const wrap = document.getElementById('remnantsWrap');
+    const title = document.getElementById('remnantsTitle');
+    wrap.innerHTML = '';
+    if (!lastResult){ title.style.display = 'none'; return; }
+    title.style.display = '';
+    if (lastResult.mode === 'sheet'){
+      title.textContent = 'All remnants — leftover regions per sheet';
+      renderRemnantsSheet(wrap);
+    } else {
+      title.textContent = 'All remnants — grouped by length';
+      renderRemnantsLinear(wrap);
+    }
+  }
+
+  function renderRemnantsLinear(wrap){
+    const { result, cutUnit } = lastResult;
+    const map = new Map();
+    let totalBase = 0, count = 0;
+    result.bins.forEach(b => {
+      const rem = b.stockType.length - b.used;
+      if (rem > 1e-6){
+        const disp = fmt(fromBase(rem, cutUnit));
+        map.set(disp, (map.get(disp) || 0) + 1);
+        totalBase += rem; count++;
+      }
+    });
+    if (!map.size){ wrap.innerHTML = '<div class="hint">No usable remnants — every stock piece was fully consumed.</div>'; return; }
+    const entries = Array.from(map.entries()).sort((a,b) => parseFloat(b[0]) - parseFloat(a[0]));
+    let html = '<table><tr><th>Remnant length</th><th>Count</th></tr>';
+    entries.forEach(([len, c]) => { html += '<tr><td>' + len + ' ' + cutUnit + '</td><td>' + c + '</td></tr>'; });
+    html += '<tr><td style="font-family:var(--font-display);font-weight:600;">' + count + ' offcut' + (count===1?'':'s') + '</td>' +
+            '<td style="font-family:var(--font-display);font-weight:600;">' + fmt(fromBase(totalBase, cutUnit)) + ' ' + cutUnit + ' total</td></tr>';
+    html += '</table>';
+    wrap.innerHTML = html;
+  }
+
+  function renderRemnantsSheet(wrap){
+    const { result, cutUnit } = lastResult;
+    let html = '<div class="remnant-sheets">';
+    result.bins.forEach((b, i) => {
+      const st = b.stockType;
+      const VBW = 300, VBH = st.width > 0 ? Math.round(VBW * (st.height / st.width)) : VBW;
+      const sx = VBW / st.width, sy = VBH / st.height;
+      let svg = '<svg viewBox="0 0 ' + VBW + ' ' + VBH + '" xmlns="http://www.w3.org/2000/svg">';
+      svg += '<rect x="0" y="0" width="' + VBW + '" height="' + VBH + '" class="remnant-sheet-outline"/>';
+      (b.freeRects || []).forEach(r => {
+        if (r.w <= 1e-6 || r.h <= 1e-6) return;
+        const rx = r.x*sx, ry = r.y*sy, rw = r.w*sx, rh = r.h*sy;
+        const dw = fmt(fromBase(r.w, cutUnit)), dh = fmt(fromBase(r.h, cutUnit));
+        svg += '<rect class="remnant-free" x="' + rx.toFixed(2) + '" y="' + ry.toFixed(2) + '" width="' + rw.toFixed(2) + '" height="' + rh.toFixed(2) + '"><title>' + dw + ' x ' + dh + ' ' + cutUnit + '</title></rect>';
+        if (Math.min(rw, rh) > 28){
+          const fs = Math.max(8, Math.min(13, Math.min(rw, rh) / 4));
+          svg += '<text class="remnant-free-label" x="' + (rx+rw/2).toFixed(2) + '" y="' + (ry+rh/2).toFixed(2) + '" font-size="' + fs.toFixed(1) + '">' + dw + '×' + dh + '</text>';
+        }
+      });
+      svg += '</svg>';
+      const size = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+      html += '<div class="remnant-sheet"><div class="cap">Sheet ' + String(i+1).padStart(2,'0') + ' · ' + escapeHtml(st.label || size) + '</div>' +
+              '<div class="remnant-svg-wrap">' + svg + '</div></div>';
+    });
+    html += '</div>';
+    wrap.innerHTML = html;
+  }
+
+  // ---------- printable label sheet, in cut order ----------
+  function labelCard(labelStr, dim, meta, colorCss){
+    const parts = labelStr ? labelStr.split(' · ') : [];
+    const primary = parts.length ? parts[0] : dim;
+    const details = parts.slice(1);
+    const banded = colorCss ? ' has-band' : '';
+    const style = colorCss ? ' style="--band:' + colorCss + '"' : '';
+    return '<div class="label-card' + banded + '"' + style + '>' +
+      '<div class="lc-name">' + escapeHtml(primary) + '</div>' +
+      (labelStr ? '<div class="lc-dim">' + escapeHtml(dim) + '</div>' : '') +
+      details.map(d => '<div class="lc-meta">' + escapeHtml(d) + '</div>').join('') +
+      '<div class="lc-meta">' + escapeHtml(meta) + '</div>' +
+    '</div>';
+  }
+
+  function buildLabelSheet(){
+    const el = document.getElementById('labelSheet');
+    if (!lastResult){ el.innerHTML = ''; return; }
+    let html = '<h2>Cut-order labels</h2>';
+    html += '<div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);margin-bottom:10px;">' +
+            (lastResult.mode === 'sheet' ? 'Sheet nesting' : 'Linear cut') + ' · generated ' + new Date().toLocaleString() + '</div>';
+    if (lastResult.mode === 'sheet'){
+      const { result, cutUnit } = lastResult;
+      result.bins.forEach((b, i) => {
+        const st = b.stockType;
+        const size = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+        html += '<div class="label-grid"><div class="label-stock-head">Sheet ' + String(i+1).padStart(2,'0') + ' — ' + escapeHtml(st.label || size) + '</div>';
+        b.placements.slice().sort((a,b2) => (b2.w*b2.h) - (a.w*a.h)).forEach((p, j) => {
+          const dw = fmt(fromBase(p.w, cutUnit)), dh = fmt(fromBase(p.h, cutUnit));
+          html += labelCard(p.label, dw + ' x ' + dh + ' ' + cutUnit, 'Sheet ' + (i+1) + ' · part ' + (j+1) + (p.rotated ? ' · rotated' : ''), p.colorCss);
+        });
+        html += '</div>';
+      });
+    } else {
+      const { result, cutUnit } = lastResult;
+      result.bins.forEach((b, i) => {
+        const st = b.stockType;
+        const len = fmt(st.origLength) + ' ' + st.unit;
+        html += '<div class="label-grid"><div class="label-stock-head">Stock ' + String(i+1).padStart(2,'0') + ' — ' + escapeHtml(st.label || len) + '</div>';
+        b.pieces.forEach((p, j) => {
+          const dl = fmt(fromBase(p.length, cutUnit));
+          html += labelCard(p.label, dl + ' ' + cutUnit, 'Stock ' + (i+1) + ' · cut ' + (j+1) + ' of ' + b.pieces.length, p.colorCss);
+        });
+        html += '</div>';
+      });
+    }
+    el.innerHTML = html;
+  }
+
+  document.getElementById('printLabelsBtn').addEventListener('click', () => {
+    if (!lastResult) return;
+    buildLabelSheet();
+    document.body.classList.add('label-print-mode');
+    window.print();                                        // blocks until the dialog closes on desktop
+    document.body.classList.remove('label-print-mode');
+  });
+  // backstop for browsers where print() returns before the dialog closes
+  window.addEventListener('afterprint', () => document.body.classList.remove('label-print-mode'));
+
+  // ---------- CSV export ----------
+  function csvEscape(v){
+    v = (v === undefined || v === null) ? '' : String(v);
+    return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  }
+  function rowsToCsv(rows){
+    return rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  }
+
+  function buildCsv(){
+    if (!lastResult) return '';
+    const rows = [];
+    if (lastResult.mode === 'sheet'){
+      const { result, cutUnit } = lastResult;
+      rows.push(['Cutlist Optimizer — Sheet Nesting Plan']);
+      rows.push(['Generated', new Date().toLocaleString()]);
+      rows.push([]);
+      rows.push(['PURCHASE LIST']);
+      rows.push(['Stock', 'Size', 'Qty used', 'Unit price', 'Subtotal']);
+      const byType = new Map();
+      result.bins.forEach(b => {
+        const st = b.stockType;
+        if (!byType.has(st.id)) byType.set(st.id, { st, count: 0 });
+        byType.get(st.id).count++;
+      });
+      let total = 0;
+      Array.from(byType.values()).sort((a,b) => (b.st.width*b.st.height) - (a.st.width*a.st.height)).forEach(e => {
+        const st = e.st;
+        const size = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+        const sub = e.count * st.price; total += sub;
+        rows.push([st.label || size, size, e.count, st.price.toFixed(2), sub.toFixed(2)]);
+      });
+      rows.push(['', '', '', 'Total', total.toFixed(2)]);
+      rows.push([]);
+      rows.push(['CUT PLAN']);
+      rows.push(['Sheet no', 'Sheet label', 'Sheet size', 'Part no', 'Part label', 'Part W (' + cutUnit + ')', 'Part H (' + cutUnit + ')', 'Rotated', 'X (' + cutUnit + ')', 'Y (' + cutUnit + ')']);
+      result.bins.forEach((b, i) => {
+        const st = b.stockType;
+        const size = fmt(st.origWidth) + ' x ' + fmt(st.origHeight) + ' ' + st.unit;
+        b.placements.slice().sort((a,b2) => (b2.w*b2.h) - (a.w*a.h)).forEach((p, j) => {
+          rows.push([i+1, st.label || size, size, j+1, p.label || '', fmt(fromBase(p.w, cutUnit)), fmt(fromBase(p.h, cutUnit)), p.rotated ? 'Yes' : 'No', fmt(fromBase(p.x, cutUnit)), fmt(fromBase(p.y, cutUnit))]);
+        });
+      });
+    } else {
+      const { result, kerfBase, cutUnit } = lastResult;
+      rows.push(['Cutlist Optimizer — Cut Plan']);
+      rows.push(['Generated', new Date().toLocaleString()]);
+      rows.push(['Kerf', fmt(fromBase(kerfBase, lastResult.kerfUnitVal)) + ' ' + lastResult.kerfUnitVal]);
+      rows.push([]);
+      rows.push(['PURCHASE LIST']);
+      rows.push(['Stock', 'Length', 'Qty used', 'Unit price', 'Subtotal']);
+      const byType = new Map();
+      result.bins.forEach(b => {
+        const st = b.stockType;
+        if (!byType.has(st.id)) byType.set(st.id, { st, count: 0 });
+        byType.get(st.id).count++;
+      });
+      let total = 0;
+      Array.from(byType.values()).sort((a,b) => b.st.length - a.st.length).forEach(e => {
+        const st = e.st;
+        const len = fmt(st.origLength) + ' ' + st.unit;
+        const sub = e.count * st.price; total += sub;
+        rows.push([st.label || len, len, e.count, st.price.toFixed(2), sub.toFixed(2)]);
+      });
+      rows.push(['', '', '', 'Total', total.toFixed(2)]);
+      rows.push([]);
+      rows.push(['CUT PLAN']);
+      rows.push(['Stock no', 'Stock label', 'Stock length', 'Cut no', 'Part label', 'Cut length (' + cutUnit + ')', 'Mark at (' + cutUnit + ')']);
+      result.bins.forEach((b, i) => {
+        const st = b.stockType;
+        const len = fmt(st.origLength) + ' ' + st.unit;
+        let running = 0;
+        b.pieces.forEach((p, j) => {
+          if (j > 0) running += kerfBase;
+          running += p.length;
+          rows.push([i+1, st.label || len, len, j+1, p.label || '', fmt(fromBase(p.length, cutUnit)), fmt(fromBase(running, cutUnit))]);
+        });
+      });
+    }
+    return rowsToCsv(rows);
+  }
+
+  function downloadFile(filename, text, mime){
+    // BOM keeps Excel happy with UTF-8
+    const blob = new Blob(['﻿' + text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  }
+
+  document.getElementById('csvBtn').addEventListener('click', () => {
+    if (!lastResult) return;
+    downloadFile('cutlist-' + lastResult.mode + '-plan.csv', buildCsv(), 'text/csv;charset=utf-8;');
+    const btn = document.getElementById('csvBtn');
+    btn.textContent = 'Downloaded ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Download CSV'; btn.classList.remove('copied'); }, 1800);
+  });
+
+  // ---------- reset ----------
+  function resetAll(){
+    if (!window.confirm('Clear all inputs and results?')) return;
+    partRows = [ { id: 1, value: '', qty: 1, fields: [], color: '' } ];
+    nextPartId = 2;
+    stockRows = [ { id: 1, length: '', width: '', height: '', unit: 'in', price: '', qty: '', label: '' } ];
+    nextStockId = 2;
+    lastResult = null;
+    document.getElementById('partsBulk').value = '';
+    document.getElementById('kerfInput').value = '0.125';
+    document.getElementById('kerfUnitSelect').value = 'in';
+    document.getElementById('unitSelect').value = 'in';
+    document.getElementById('allowRotateInput').checked = true;
+    const hint = document.getElementById('parseHint');
+    hint.className = 'hint'; hint.textContent = '';
+    document.getElementById('resultsContent').hidden = true;
+    document.getElementById('emptyState').hidden = false;
+    setMode('linear', { silent: true }); // re-render tables + copy for the reset state
+    try { history.replaceState(null, '', location.pathname + location.search); } catch(e){ /* ignore */ }
+  }
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+  document.getElementById('fabOptimize').addEventListener('click', runOptimizer);
+  document.getElementById('fabReset').addEventListener('click', resetAll);
+
+  // how-to modal
+  (function(){
+    const overlay = document.getElementById('helpModal');
+    const open = () => { overlay.hidden = false; };
+    const close = () => { overlay.hidden = true; };
+    document.getElementById('helpBtn').addEventListener('click', open);
+    document.getElementById('helpClose').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+  })();
+
+  // ---------- init ----------
+  const restored = restoreFromHash();
+  renderStockTable();
+  renderPartsTable();
+  if (restored && partRows.some(r => String(r.value).trim())){
+    runOptimizer();
+  }
+
+})();
+</script>
+</body>
+</html>
