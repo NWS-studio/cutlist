@@ -786,6 +786,17 @@
 
   .cut-order-table th, .cut-order-table td{ font-size:12px; padding:5px 10px; }
 
+  /* a piece that is one part of a joined (longer-than-stock) part */
+  .segment.joint{
+    background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.24) 0 5px, transparent 5px 11px);
+  }
+  .legend-swatch.joint{
+    background-color:var(--blue);
+    background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 4px);
+  }
+  .joins-wrap{ margin:26px 0 24px; }
+  .join-tag{ color:var(--blue); font-weight:600; }
+
   .legend-row{
     display:flex;
     gap:16px;
@@ -1064,6 +1075,14 @@
         <div class="hint">Turn this off if the sheet has a grain direction or directional pattern that must stay aligned.</div>
       </div>
 
+      <div class="field-group" id="joinGroup">
+        <label style="margin-bottom:6px;"><input type="checkbox" id="joinInput" style="width:auto;margin-right:6px;vertical-align:middle;">Join stock for parts longer than the stock</label>
+        <div class="hint" style="margin-bottom:10px;">A part longer than the longest stock is built from full-length sticks plus one shorter piece, joined end to end. The pieces are packed like any other cut, so their offcuts still serve the rest of the list.</div>
+        <label for="joinMinInput">Shortest piece to join</label>
+        <input type="number" id="joinMinInput" min="0" step="any" placeholder="no minimum">
+        <div class="hint">In the cutlist unit. If the leftover piece would come out shorter than this, length moves over from the first piece so you aren't joining onto a sliver. Capped at half the stock length.</div>
+      </div>
+
       <button class="btn-primary" id="optimizeBtn" type="button">Optimize cutlist</button>
       <button class="btn-secondary" id="shareLinkBtn" type="button">Copy link to this cutlist</button>
       <div class="hint" style="margin-top:8px;">The link encodes everything on this page. Works once this page is open in its own browser tab — inside a chat preview, the address bar isn't live.</div>
@@ -1097,6 +1116,12 @@
         <h3 class="section-title">Cut plan, by stock piece</h3>
         <div class="legend-row" id="legendRow"></div>
         <div class="bins-wrap" id="binsWrap"></div>
+
+        <div id="joinsSection" class="joins-wrap" hidden>
+          <h3 class="section-title">Joined parts</h3>
+          <div class="hint" style="margin:-4px 0 10px;">Each part below is longer than the stock. Cut its pieces where the plan says, then join them in order.</div>
+          <table id="joinsTable"></table>
+        </div>
 
         <h3 class="section-title" id="remnantsTitle">All remnants</h3>
         <div id="remnantsWrap"></div>
@@ -1149,7 +1174,10 @@
     <h3>6 · Kerf</h3>
     <p>The blade width lost per cut, in its own inch/mm unit. It's charged between parts sharing a stock piece.</p>
 
-    <h3>7 · Results</h3>
+    <h3>7 · Parts longer than the stock</h3>
+    <p>In Linear mode, tick <strong>Join stock for parts longer than the stock</strong>. Each part longer than the longest stock option is split into full-length pieces plus one shorter piece, and those pieces are packed with the rest of the list. A 17 ft part from 12 ft stock becomes 12 + 5. The plan tags each piece (<code>J1 · 1 of 2</code>), and a <strong>Joined parts</strong> table shows where each piece is cut. Set <strong>Shortest piece to join</strong> to avoid joining onto a sliver.</p>
+
+    <h3>8 · Results</h3>
     <p><strong>Optimize</strong> gives a purchase list, a cut plan per stock piece, and an <strong>All remnants</strong> summary of your offcuts. Export the plan as <strong>text</strong>, <strong>CSV</strong>, or <strong>PDF</strong>, <strong>Print labels in cut order</strong>, or <strong>copy a link</strong> that restores everything.</p>
 
     <p class="modal-foot">Tip: the parts list and results scroll independently — hover over the one you want to scroll.</p>
@@ -1879,6 +1907,57 @@
     return { bins, unplaceable, unplaceableOutOfStock };
   }
 
+  // ---------- joined parts (longer than the stock) ----------
+  // Split a length longer than maxLen into full-length pieces plus one shorter
+  // remainder. If the remainder would fall below minSeg, the first piece gives
+  // up the difference. minSeg is capped at maxLen/2 so every piece still fits.
+  function splitLong(len, maxLen, minSeg){
+    const n = Math.ceil(len / maxLen - 1e-9);
+    const segs = [];
+    for (let i=0;i<n-1;i++) segs.push(maxLen);
+    segs.push(len - (n-1) * maxLen);
+    const min = Math.min(minSeg || 0, maxLen / 2);
+    const last = segs[n-1];
+    if (last < min - 1e-9){
+      segs[0] -= (min - last);
+      segs[n-1] = min;
+    }
+    return segs;
+  }
+
+  // Replace each piece longer than every stock option with its join pieces.
+  function expandJoins(pieces, maxLen, minSeg){
+    let nextId = pieces.reduce((m, p) => Math.max(m, p.id), -1) + 1;
+    let num = 0;
+    const out = [];
+    pieces.forEach(p => {
+      if (p.length <= maxLen + 1e-9){ out.push(p); return; }
+      num++;
+      const segs = splitLong(p.length, maxLen, minSeg);
+      segs.forEach((len, k) => out.push({
+        id: nextId++, length: len, label: p.label, colorCss: p.colorCss,
+        join: { jid: 'J' + num, num, idx: k+1, count: segs.length, total: p.length }
+      }));
+    });
+    return out;
+  }
+
+  // Where each joined part's pieces landed in the plan: [{jid, label, total, segs:[{idx,length,bin,cut}]}]
+  function collectJoins(bins){
+    const map = new Map();
+    bins.forEach((b, bi) => b.pieces.forEach((p, ci) => {
+      if (!p.join) return;
+      const j = p.join;
+      if (!map.has(j.jid)) map.set(j.jid, { jid: j.jid, num: j.num, count: j.count, label: p.label, total: j.total, segs: [] });
+      map.get(j.jid).segs.push({ idx: j.idx, length: p.length, bin: bi, cut: ci });
+    }));
+    const out = Array.from(map.values()).sort((a,b) => a.num - b.num);
+    out.forEach(j => j.segs.sort((a,b) => a.idx - b.idx));
+    return out;
+  }
+
+  function joinTag(p){ return p.join ? (p.join.jid + ' · ' + p.join.idx + ' of ' + p.join.count) : ''; }
+
   // ---------- sheet-goods 2D packing (guillotine, best-area-fit) ----------
   function fitsInSheet(piece, sheetW, sheetH, allowRotate){
     if (piece.w <= sheetW + 1e-9 && piece.h <= sheetH + 1e-9) return true;
@@ -2128,6 +2207,8 @@
   document.getElementById('kerfUnitSelect').addEventListener('change', updateHash);
   document.getElementById('kerfInput').addEventListener('input', updateHash);
   document.getElementById('allowRotateInput').addEventListener('change', updateHash);
+  document.getElementById('joinInput').addEventListener('change', updateHash);
+  document.getElementById('joinMinInput').addEventListener('input', updateHash);
 
   // ---------- mode toggle ----------
   const MODE_COPY = {
@@ -2162,6 +2243,7 @@
     document.getElementById('footnoteText').textContent = c.footnote;
     document.getElementById('addStockBtn').textContent = mode === 'sheet' ? '+ Add sheet size' : '+ Add length';
     document.getElementById('rotateGroup').hidden = (mode !== 'sheet');
+    document.getElementById('joinGroup').hidden = (mode !== 'linear');
   }
 
   function setMode(newMode, opts){
@@ -2195,6 +2277,8 @@
     return {
       m: mode,
       rot: document.getElementById('allowRotateInput').checked,
+      j: document.getElementById('joinInput').checked,
+      jm: document.getElementById('joinMinInput').value,
       p: partRows.map(r => [r.value, r.qty, (r.fields || []).map(f => [f.name || '', f.value || '']), r.color || '']),
       k: document.getElementById('kerfInput').value,
       ku: document.getElementById('kerfUnitSelect').value,
@@ -2220,6 +2304,8 @@
       document.getElementById('kerfUnitSelect').value = (state.ku === 'mm') ? 'mm' : 'in';
       document.getElementById('unitSelect').value = state.u || 'in';
       document.getElementById('allowRotateInput').checked = state.rot !== false;
+      document.getElementById('joinInput').checked = state.j === true;
+      document.getElementById('joinMinInput').value = (typeof state.jm === 'string') ? state.jm : '';
 
       if (Array.isArray(state.p) && state.p.length){
         partRows = state.p.map((row, i) => {
@@ -2337,16 +2423,26 @@
       return;
     }
 
-    const result = optimize(piecesBase, stockTypes, kerfBase);
-    lastResult = { mode: 'linear', result, kerfBase, cutUnit, kerfUnitVal: kerfUnit(), totalParts: pieces.length };
+    const joinOn = document.getElementById('joinInput').checked;
+    let piecesForRun = piecesBase;
+    if (joinOn){
+      const maxLen = Math.max(...stockTypes.map(s => s.length));
+      const minRaw = parseFloat(document.getElementById('joinMinInput').value);
+      const minSeg = isFinite(minRaw) && minRaw > 0 ? toBase(minRaw, cutUnit) : 0;
+      piecesForRun = expandJoins(piecesBase, maxLen, minSeg);
+    }
+
+    const result = optimize(piecesForRun, stockTypes, kerfBase);
+    const joins = collectJoins(result.bins);
+    lastResult = { mode: 'linear', result, kerfBase, cutUnit, kerfUnitVal: kerfUnit(), totalParts: pieces.length, joins };
 
     const msgs = [];
     if (result.unplaceable.length){
       const lens = result.unplaceable.map(p => fmt(fromBase(p.length, cutUnit))).sort((a,b)=>b-a);
-      msgs.push('These lengths are longer than every stock option and were left out: ' + lens.join(', ') + ' ' + cutUnit + '. Add a longer stock length or split the cut.');
+      msgs.push('These lengths are longer than every stock option and were left out: ' + lens.join(', ') + ' ' + cutUnit + '. Add a longer stock length, or turn on “Join stock for parts longer than the stock” to build them from joined pieces.');
     }
     if (result.unplaceableOutOfStock.length){
-      const lens2 = result.unplaceableOutOfStock.map(p => fmt(fromBase(p.length, cutUnit))).sort((a,b)=>b-a);
+      const lens2 = result.unplaceableOutOfStock.map(p => fmt(fromBase(p.length, cutUnit)) + (p.join ? ' (' + joinTag(p) + ')' : '')).sort((a,b)=>parseFloat(b)-parseFloat(a));
       msgs.push('These lengths ran out of matching stock — quantity limits were reached — and were left out: ' + lens2.join(', ') + ' ' + cutUnit + '. Add more quantity, or another stock length, to cover them.');
     }
     if (msgs.length) showError(msgs.join(' '));
@@ -2440,6 +2536,7 @@
     document.getElementById('legendRow').innerHTML = '';
     document.getElementById('remnantsWrap').innerHTML = '';
     document.getElementById('remnantsTitle').style.display = 'none';
+    document.getElementById('joinsSection').hidden = true;
     document.getElementById('copyBtn').style.display = 'none';
     document.getElementById('csvBtn').style.display = 'none';
     document.getElementById('printBtn').style.display = 'none';
@@ -2486,6 +2583,11 @@
       statCard('Material used', utilizationPct.toFixed(1) + '%', 'of stock purchased', '') +
       statCard('Remnant', fmt(fromBase(remnantBase, cutUnit)) + ' ' + cutUnit, 'reusable offcut', '') +
       statCard('Kerf loss', fmt(fromBase(kerfLossBase, cutUnit)) + ' ' + cutUnit, 'consumed by the blade', 'warn');
+    const joins = lastResult.joins || [];
+    if (joins.length){
+      const nJoints = joins.reduce((s, j) => s + j.count - 1, 0);
+      statRow.innerHTML += statCard('Joints', nJoints.toString(), joins.length + ' part' + (joins.length===1?'':'s') + ' built from joined stock', 'accent');
+    }
 
     // ---- purchase table ----
     const purchaseTable = document.getElementById('purchaseTable');
@@ -2513,7 +2615,8 @@
     assignColors(uniqueLengths);
     document.getElementById('legendRow').innerHTML =
       '<span class="legend-item"><span class="legend-swatch kerf"></span>kerf</span>' +
-      '<span class="legend-item"><span class="legend-swatch remnant"></span>remnant</span>';
+      '<span class="legend-item"><span class="legend-swatch remnant"></span>remnant</span>' +
+      (joins.length ? '<span class="legend-item"><span class="legend-swatch joint"></span>piece of a joined part</span>' : '');
 
     // ---- bin diagrams ----
     const binsWrap = document.getElementById('binsWrap');
@@ -2522,7 +2625,28 @@
       binsWrap.appendChild(renderBinCard(b, i, kerfBase, cutUnit));
     });
 
+    renderJoins(joins, cutUnit);
     renderRemnants();
+  }
+
+  function stockNo(i){ return 'Stock ' + String(i+1).padStart(2,'0'); }
+
+  function renderJoins(joins, cutUnit){
+    const section = document.getElementById('joinsSection');
+    section.hidden = !joins.length;
+    if (!joins.length){ document.getElementById('joinsTable').innerHTML = ''; return; }
+    const anyLabel = joins.some(j => j.label);
+    let html = '<tr><th>Part</th>' + (anyLabel ? '<th>Label</th>' : '') + '<th>Finished length</th><th>Pieces, joined in order</th></tr>';
+    joins.forEach(j => {
+      const segs = j.segs.map(s => fmt(fromBase(s.length, cutUnit)) + ' ' + cutUnit + ' <span style="color:var(--ink-faint);">(' + stockNo(s.bin) + ', cut ' + (s.cut+1) + ')</span>').join(' + ');
+      html += '<tr>' +
+        '<td class="join-tag">' + j.jid + '</td>' +
+        (anyLabel ? '<td>' + escapeHtml(j.label || '') + '</td>' : '') +
+        '<td>' + fmt(fromBase(j.total, cutUnit)) + ' ' + cutUnit + '</td>' +
+        '<td>' + segs + '</td>' +
+        '</tr>';
+    });
+    document.getElementById('joinsTable').innerHTML = html;
   }
 
   function statCard(label, value, sub, cls){
@@ -2567,13 +2691,14 @@
         bar.appendChild(kerfEl);
       }
       const seg = document.createElement('div');
-      seg.className = 'segment';
+      seg.className = 'segment' + (p.join ? ' joint' : '');
       const widthPct = (p.length / st.length) * 100;
       const dispLen = fmt(fromBase(p.length, cutUnit));
       seg.style.width = widthPct + '%';
-      seg.style.background = colorFor(dispLen);
-      seg.title = (p.label ? p.label + ' — ' : '') + dispLen + ' ' + cutUnit;
-      if (widthPct > 6) seg.textContent = dispLen;
+      seg.style.backgroundColor = colorFor(dispLen);
+      seg.title = (p.label ? p.label + ' — ' : '') + dispLen + ' ' + cutUnit +
+        (p.join ? ' — ' + joinTag(p) + ' of a ' + fmt(fromBase(p.join.total, cutUnit)) + ' ' + cutUnit + ' joined part' : '');
+      if (widthPct > 6) seg.textContent = dispLen + (p.join && widthPct > 14 ? ' · ' + p.join.jid : '');
       bar.appendChild(seg);
     });
     if (remnantBase > 1e-6){
@@ -2593,6 +2718,7 @@
     let runningBase = 0;
     let bodyRows = '';
     const anyLabel = bin.pieces.some(p => p.label);
+    const anyJoin = bin.pieces.some(p => p.join);
     bin.pieces.forEach((p, i) => {
       if (i > 0) runningBase += kerfBase;
       runningBase += p.length;
@@ -2601,9 +2727,10 @@
         (anyLabel ? '<td>' + escapeHtml(p.label || '') + '</td>' : '') +
         '<td>' + fmt(fromBase(p.length, cutUnit)) + ' ' + cutUnit + '</td>' +
         '<td>' + fmt(fromBase(runningBase, cutUnit)) + ' ' + cutUnit + '</td>' +
+        (anyJoin ? '<td class="join-tag">' + joinTag(p) + '</td>' : '') +
         '</tr>';
     });
-    table.innerHTML = '<tr><th>Cut</th>' + (anyLabel ? '<th>Label</th>' : '') + '<th>Length</th><th>Mark at</th></tr>' + bodyRows;
+    table.innerHTML = '<tr><th>Cut</th>' + (anyLabel ? '<th>Label</th>' : '') + '<th>Length</th><th>Mark at</th>' + (anyJoin ? '<th>Joins into</th>' : '') + '</tr>' + bodyRows;
     card.appendChild(table);
 
     return card;
@@ -2611,6 +2738,7 @@
 
   // ---------- sheet-goods results rendering ----------
   function renderSheetResults(result, kerfBase, cutUnit){
+    document.getElementById('joinsSection').hidden = true;
     document.getElementById('emptyState').hidden = true;
     document.getElementById('resultsContent').hidden = false;
     document.getElementById('copyBtn').style.display = '';
@@ -2793,11 +2921,19 @@
         b.pieces.forEach((p, j) => {
           if (j > 0) runningBase += kerfBase;
           runningBase += p.length;
-          text += '  Cut ' + (j+1) + ': ' + (p.label ? p.label + ' — ' : '') + fmt(fromBase(p.length, cutUnit)) + ' ' + cutUnit + '  (mark at ' + fmt(fromBase(runningBase, cutUnit)) + ' ' + cutUnit + ')\n';
+          text += '  Cut ' + (j+1) + ': ' + (p.label ? p.label + ' — ' : '') + fmt(fromBase(p.length, cutUnit)) + ' ' + cutUnit + '  (mark at ' + fmt(fromBase(runningBase, cutUnit)) + ' ' + cutUnit + ')' + (p.join ? '  [' + joinTag(p) + ']' : '') + '\n';
         });
         const remnantBase = st.length - b.used;
         text += '  Remnant: ' + fmt(fromBase(remnantBase, cutUnit)) + ' ' + cutUnit + '\n\n';
       });
+      const joins = lastResult.joins || [];
+      if (joins.length){
+        text += 'JOINED PARTS\n';
+        joins.forEach(jn => {
+          text += '  ' + jn.jid + (jn.label ? ' — ' + jn.label : '') + ': ' + fmt(fromBase(jn.total, cutUnit)) + ' ' + cutUnit + ' = ' +
+            jn.segs.map(s => fmt(fromBase(s.length, cutUnit)) + ' (stock ' + (s.bin+1) + ' cut ' + (s.cut+1) + ')').join(' + ') + '\n';
+        });
+      }
     }
     const btn = document.getElementById('copyBtn');
     navigator.clipboard.writeText(text).then(() => {
@@ -2922,7 +3058,8 @@
         html += '<div class="label-grid"><div class="label-stock-head">Stock ' + String(i+1).padStart(2,'0') + ' — ' + escapeHtml(st.label || len) + '</div>';
         b.pieces.forEach((p, j) => {
           const dl = fmt(fromBase(p.length, cutUnit));
-          html += labelCard(p.label, dl + ' ' + cutUnit, 'Stock ' + (i+1) + ' · cut ' + (j+1) + ' of ' + b.pieces.length, p.colorCss);
+          const jMeta = p.join ? ' · ' + joinTag(p) + ' → ' + fmt(fromBase(p.join.total, cutUnit)) + ' ' + cutUnit : '';
+          html += labelCard(p.label, dl + ' ' + cutUnit, 'Stock ' + (i+1) + ' · cut ' + (j+1) + ' of ' + b.pieces.length + jMeta, p.colorCss);
         });
         html += '</div>';
       });
@@ -3007,7 +3144,7 @@
       rows.push(['', '', '', 'Total', total.toFixed(2)]);
       rows.push([]);
       rows.push(['CUT PLAN']);
-      rows.push(['Stock no', 'Stock label', 'Stock length', 'Cut no', 'Part label', 'Cut length (' + cutUnit + ')', 'Mark at (' + cutUnit + ')']);
+      rows.push(['Stock no', 'Stock label', 'Stock length', 'Cut no', 'Part label', 'Cut length (' + cutUnit + ')', 'Mark at (' + cutUnit + ')', 'Joins into']);
       result.bins.forEach((b, i) => {
         const st = b.stockType;
         const len = fmt(st.origLength) + ' ' + st.unit;
@@ -3015,9 +3152,18 @@
         b.pieces.forEach((p, j) => {
           if (j > 0) running += kerfBase;
           running += p.length;
-          rows.push([i+1, st.label || len, len, j+1, p.label || '', fmt(fromBase(p.length, cutUnit)), fmt(fromBase(running, cutUnit))]);
+          rows.push([i+1, st.label || len, len, j+1, p.label || '', fmt(fromBase(p.length, cutUnit)), fmt(fromBase(running, cutUnit)), joinTag(p)]);
         });
       });
+      const joins = lastResult.joins || [];
+      if (joins.length){
+        rows.push([]);
+        rows.push(['JOINED PARTS']);
+        rows.push(['Part', 'Part label', 'Finished length (' + cutUnit + ')', 'Piece', 'Piece length (' + cutUnit + ')', 'Stock no', 'Cut no']);
+        joins.forEach(jn => jn.segs.forEach(s => {
+          rows.push([jn.jid, jn.label || '', fmt(fromBase(jn.total, cutUnit)), s.idx + ' of ' + jn.count, fmt(fromBase(s.length, cutUnit)), s.bin+1, s.cut+1]);
+        }));
+      }
     }
     return rowsToCsv(rows);
   }
@@ -3056,6 +3202,8 @@
     document.getElementById('kerfUnitSelect').value = 'in';
     document.getElementById('unitSelect').value = 'in';
     document.getElementById('allowRotateInput').checked = true;
+    document.getElementById('joinInput').checked = false;
+    document.getElementById('joinMinInput').value = '';
     const hint = document.getElementById('parseHint');
     hint.className = 'hint'; hint.textContent = '';
     document.getElementById('resultsContent').hidden = true;
