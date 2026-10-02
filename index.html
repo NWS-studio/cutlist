@@ -795,6 +795,21 @@
     background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 4px);
   }
   .joins-wrap{ margin:26px 0 24px; }
+  .join-box{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px;
+    background:var(--paper);
+  }
+  .join-min{
+    display:grid;
+    grid-template-columns:1fr 96px;
+    gap:8px;
+    align-items:center;
+    margin-top:10px;
+  }
+  .join-min label{ margin-bottom:0; }
+  .join-min input{ background:#fff; }
   .join-tag{ color:var(--blue); font-weight:600; }
 
   .legend-row{
@@ -1016,6 +1031,15 @@
         <div class="hint" id="stockHint">Leave quantity blank for unlimited stock at that length. Each row can use its own unit — handy when the yard prices big stock in feet but you're cutting in inches.</div>
       </div>
 
+      <div class="field-group join-box" id="joinGroup">
+        <label style="margin-bottom:4px;"><input type="checkbox" id="joinInput" style="width:auto;margin-right:6px;vertical-align:middle;">Join stock for parts longer than the stock</label>
+        <div class="hint" style="margin-top:0;">Over-length parts are built from full sticks plus one shorter piece, joined end to end.</div>
+        <div class="join-min">
+          <label for="joinMinInput">Shortest piece to join</label>
+          <input type="number" id="joinMinInput" min="0" step="any" placeholder="none" title="In the cutlist unit. If the leftover piece would be shorter than this, length moves over from the first piece. Capped at half the stock length.">
+        </div>
+      </div>
+
       <div class="field-group">
         <label for="partsBulk" id="cutlistLabel">Cut lengths</label>
 
@@ -1073,14 +1097,6 @@
       <div class="field-group" id="rotateGroup" hidden>
         <label style="margin-bottom:6px;"><input type="checkbox" id="allowRotateInput" checked style="width:auto;margin-right:6px;vertical-align:middle;">Allow pieces to rotate 90°</label>
         <div class="hint">Turn this off if the sheet has a grain direction or directional pattern that must stay aligned.</div>
-      </div>
-
-      <div class="field-group" id="joinGroup">
-        <label style="margin-bottom:6px;"><input type="checkbox" id="joinInput" style="width:auto;margin-right:6px;vertical-align:middle;">Join stock for parts longer than the stock</label>
-        <div class="hint" style="margin-bottom:10px;">A part longer than the longest stock is built from full-length sticks plus one shorter piece, joined end to end. The pieces are packed like any other cut, so their offcuts still serve the rest of the list.</div>
-        <label for="joinMinInput">Shortest piece to join</label>
-        <input type="number" id="joinMinInput" min="0" step="any" placeholder="no minimum">
-        <div class="hint">In the cutlist unit. If the leftover piece would come out shorter than this, length moves over from the first piece so you aren't joining onto a sliver. Capped at half the stock length.</div>
       </div>
 
       <button class="btn-primary" id="optimizeBtn" type="button">Optimize cutlist</button>
