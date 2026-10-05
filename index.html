@@ -1924,9 +1924,9 @@
   }
 
   // The greedy commits each new stock to whatever fills it best right then, so a
-  // short part can be spent as filler in a long stock and leave a short stock it
+  // small part can be spent as filler in a big stock and leave a smaller stock it
   // would have fit unused. With limited quantities that costs parts. Re-run it on
-  // jittered longest-first orders and keep the best plan. The plain run goes first
+  // jittered biggest-first orders and keep the best plan. The plain run goes first
   // and is only replaced by a strictly better one. Seeded, so a link reproduces.
   function mulberry32(seed){
     return function(){
@@ -1937,13 +1937,15 @@
     };
   }
 
-  function planRank(r){
-    const sum = (arr, f) => arr.reduce((acc, x) => acc + f(x), 0);
+  function sumOf(arr, f){ return arr.reduce((acc, x) => acc + f(x), 0); }
+
+  // Fewest parts left out, then least left out, then cheapest, then least stock.
+  function planRank(r, size, stockSize){
     return [
       r.unplaceableOutOfStock.length,
-      sum(r.unplaceableOutOfStock, p => p.length),
-      sum(r.bins, b => b.stockType.price || 0),
-      sum(r.bins, b => b.stockType.length),
+      sumOf(r.unplaceableOutOfStock, size),
+      sumOf(r.bins, b => b.stockType.price || 0),
+      sumOf(r.bins, b => stockSize(b.stockType)),
       r.bins.length
     ];
   }
@@ -1955,24 +1957,30 @@
     return false;
   }
 
-  function optimizeBest(piecesIn, stockTypes, kerf){
-    let best = optimize(piecesIn, stockTypes, kerf);
-    let bestRank = planRank(best);
-    const n = piecesIn.length;
-    if (n < 2) return best;
-    const runs = Math.max(30, Math.min(400, Math.floor(3e6 / (n * n * stockTypes.length))));
+  // run(order, keepOrder) packs one plan; size ranks parts biggest-first.
+  function bestOfOrders(piecesIn, run, size, stockSize, runs){
+    let best = run(piecesIn, false);
+    let bestRank = planRank(best, size, stockSize);
+    if (piecesIn.length < 2) return best;
     const rand = mulberry32(1);
     for (let k=0;k<runs;k++){
       const spread = 0.05 + 0.6 * (k / runs);
       const order = piecesIn
-        .map(p => ({ p, key: p.length * Math.exp((rand() * 2 - 1) * spread) }))
+        .map(p => ({ p, key: size(p) * Math.exp((rand() * 2 - 1) * spread) }))
         .sort((a,b) => b.key - a.key)
         .map(x => x.p);
-      const cand = optimize(order, stockTypes, kerf, true);
-      const rank = planRank(cand);
+      const cand = run(order, true);
+      const rank = planRank(cand, size, stockSize);
       if (rankBetter(rank, bestRank)){ best = cand; bestRank = rank; }
     }
     return best;
+  }
+
+  function optimizeBest(piecesIn, stockTypes, kerf){
+    const n = piecesIn.length;
+    const runs = Math.max(30, Math.min(400, Math.floor(3e6 / (n * n * stockTypes.length))));
+    return bestOfOrders(piecesIn, (order, keep) => optimize(order, stockTypes, kerf, keep),
+      p => p.length, s => s.length, runs);
   }
 
   // ---------- joined parts (longer than the stock) ----------
@@ -2109,8 +2117,8 @@
     return { valuePerDollar, fillFrac };
   }
 
-  function optimizeSheet(piecesIn, stockTypes, kerf, allowRotate){
-    let remaining = piecesIn.slice().sort((a,b) => (b.w*b.h) - (a.w*a.h));
+  function optimizeSheet(piecesIn, stockTypes, kerf, allowRotate, keepOrder){
+    let remaining = keepOrder ? piecesIn.slice() : piecesIn.slice().sort((a,b) => (b.w*b.h) - (a.w*a.h));
     const bins = [];
     const unplaceable = [];
     const unplaceableOutOfStock = [];
@@ -2169,6 +2177,13 @@
     }
 
     return { bins, unplaceable, unplaceableOutOfStock };
+  }
+
+  function optimizeSheetBest(piecesIn, stockTypes, kerf, allowRotate){
+    const n = piecesIn.length;
+    const runs = Math.max(20, Math.min(300, Math.floor(1e7 / (n * n * stockTypes.length))));
+    return bestOfOrders(piecesIn, (order, keep) => optimizeSheet(order, stockTypes, kerf, allowRotate, keep),
+      p => p.w * p.h, s => s.width * s.height, runs);
   }
 
   // ---------- stock table rendering ----------
@@ -2572,7 +2587,7 @@
       return;
     }
 
-    const result = optimizeSheet(piecesBase, stockTypes, kerfBase, allowRotate);
+    const result = optimizeSheetBest(piecesBase, stockTypes, kerfBase, allowRotate);
     lastResult = { mode: 'sheet', result, kerfBase, cutUnit, allowRotate, kerfUnitVal: kerfUnit(), totalParts: pieces.length };
 
     const msgs = [];
